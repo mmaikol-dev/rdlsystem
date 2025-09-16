@@ -56,8 +56,8 @@ class WhatsappController extends Controller
         // Select template and phone number ID based on store
         switch ($store_name) {
             case 'RDL1':
-                $templateName = 'delivery_reminder_rdl1';
-                $phoneNumberId = '111111111111111'; // Replace with your actual Meta phone number ID
+                $templateName = 'pending_template';
+                $phoneNumberId = '631368316726669'; // Replace with your actual Meta phone number ID
                 $messageParams = [
                     ['type' => 'text', 'text' => $client_name],
                     ['type' => 'text', 'text' => $order_no],
@@ -96,7 +96,7 @@ class WhatsappController extends Controller
                 return response()->json(['error' => "Unknown store: {$store_name}"], 422);
         }
 
-        $accessToken = 'EAATOJZAktrZCIBO0R4rZBbORtSRYFkx1YyOXDfqK6UVNAJtoR15qdrBK8TFPycqxDLdaAZC3ujEQWcWBZASyyvqMAS3Lk7WYzjmQH1K9Vwl9I6EQhoZAZAalquTQs3zHW4cT1Q1qRbX566ti7xy285BZCZCiO6g5EnpXhdoyCc4Iq2Q8T57BMKtbFNNSZBipMw0Aw3'; // 👈 Replace with your actual token
+        $accessToken = 'EAATOJZAktrZCIBPYF9IkoaVtZAC4gUBeAqdonpFeF2SZA6Gq4IMAiJRMh9f8MM35wn1P2ZCr83e1H0whjX7ZCUiz04ZAuuuSTF7WJhr1WPOE0SXSqEvTqZApdtjeWLjEOIZBA3kiNnH8LMDLE1Nu1ZBpJbwAn9EU5aic6FXL3aZBkTYZAX9HTbWNStHKR2APBbDu'; // 👈 Replace with your actual token
         $url = "https://graph.facebook.com/v22.0/{$phoneNumberId}/messages";
 
         $response = Http::withToken($accessToken)->post($url, [
@@ -166,6 +166,68 @@ private function formatPhoneNumber($phoneNumber, $storeName)
         return $countryCode . $phoneNumber;
     }
 }
+
+
+// Inside WhatsappController.php
+
+public function webhook(Request $request)
+{
+    // Log everything that comes from WhatsApp
+    \Log::info("📩 WhatsApp Webhook received", $request->all());
+
+    // ✅ 1. Handle verification challenge from Meta
+    if ($request->has('hub_mode') && $request->hub_mode === 'subscribe') {
+        $verifyToken = 'realdeal_token'; // 👈 Your verify token (hardcoded for testing)
+        if ($request->hub_verify_token === $verifyToken) {
+            return response($request->hub_challenge, 200);
+        } else {
+            return response('Invalid verification token', 403);
+        }
+    }
+
+    // ✅ 2. Handle messages and status updates
+    if ($request->has('entry')) {
+        foreach ($request->entry as $entry) {
+            if (!empty($entry['changes'])) {
+                foreach ($entry['changes'] as $change) {
+                    $value = $change['value'];
+
+                    // Message received from customer
+                    if (isset($value['messages'])) {
+                        foreach ($value['messages'] as $message) {
+                            \Log::info("📨 Incoming message", $message);
+
+                            // Save to DB for testing
+                            Whatsapp::create([
+                                'to' => $message['from'], // sender number
+                                'client_name' => 'UNKNOWN',
+                                'store_name' => 'WEBHOOK',
+                                'message' => $message['text']['body'] ?? 'N/A',
+                                'status' => 'received',
+                                'sid' => $message['id'],
+                                'type' => $message['type'],
+                            ]);
+                        }
+                    }
+
+                    // Status updates for sent messages
+                    if (isset($value['statuses'])) {
+                        foreach ($value['statuses'] as $status) {
+                            \Log::info("📊 Message status update", $status);
+
+                            Whatsapp::where('sid', $status['id'])->update([
+                                'status' => $status['status'] // sent, delivered, read
+                            ]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return response('EVENT_RECEIVED', 200);
+}
+
 
     /**
      * Store a newly created resource in storage.

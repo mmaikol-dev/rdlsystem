@@ -7,9 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { FilterIcon, RefreshCwIcon } from "lucide-react";
+import { FilterIcon, RefreshCwIcon, ChevronsUpDown, Check } from "lucide-react";
 import * as React from 'react';
-import { Calendar } from '@/components/ui/calendar';
 import { format } from "date-fns";
 import { type DateRange } from 'react-day-picker';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -20,6 +19,14 @@ import {
   PaginationItem,
   PaginationLink,
 } from "@/components/ui/pagination";
+import {
+  Command,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+  CommandInput,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 const BASE_COLUMNS = [
   'order_no', 'client_name', 'product_name', 'amount', 'phone',
@@ -74,6 +81,7 @@ export default function Index() {
   const [filters, setFilters] = React.useState<Record<string, string | string[]>>({});
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>();
   const [filterDialogOpen, setFilterDialogOpen] = React.useState(false);
+  const [merchantOpen, setMerchantOpen] = React.useState(false);
 
   const updateMultiSelectFilter = (key: string, value: string, checked: boolean) => {
     setFilters(prev => {
@@ -200,16 +208,91 @@ export default function Index() {
         </Pagination>
       </div>
 
-      {/* Filter Dialog remains same */}
+      {/* ✅ Filter Dialog */}
       {filterDialogOpen && (
         <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Filter Orders</DialogTitle>
             </DialogHeader>
-            {/* ... existing merchant/date filters here ... */}
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={clearFilters}>Clear</Button>
+
+            <div className="space-y-4 mt-4">
+              {/* Merchant Filter (Popover + Command) */}
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Merchant</label>
+                <Popover open={merchantOpen} onOpenChange={setMerchantOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between"
+                    >
+                      {filters.merchant || "Select Merchant"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50 shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-[250px]">
+                    <Command>
+                      <CommandInput placeholder="Search merchant..." />
+                      <CommandList>
+                        <CommandGroup>
+                          {merchantUsers.length > 0 ? (
+                            merchantUsers.map((merchant: string, idx: number) => (
+                              <CommandItem
+                                key={idx}
+                                value={merchant}
+                                onSelect={() => {
+                                  setFilters((prev) => ({
+                                    ...prev,
+                                    merchant,
+                                  }));
+                                  setMerchantOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    filters.merchant === merchant
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  )}
+                                />
+                                {merchant}
+                              </CommandItem>
+                            ))
+                          ) : (
+                            <div className="p-2 text-sm text-muted-foreground">
+                              No merchants found
+                            </div>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Delivery Date Filter */}
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Delivery Date</label>
+                <Input
+                  type="date"
+                  value={filters.delivery_date || ""}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      delivery_date: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="outline" onClick={clearFilters}>
+                Clear
+              </Button>
               <Button onClick={applyFilters}>Apply</Button>
             </div>
           </DialogContent>
