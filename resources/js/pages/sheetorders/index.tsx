@@ -701,6 +701,69 @@ export default function Index() {
 )}
 
 
+      {/* ✅ Edit Modal - Only render when editing */}
+      {editing && (
+        <Dialog open={!!editing} onOpenChange={handleCloseEditModal}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                Edit {editing.field} for Order #{editing.order.order_no}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {editing.field === 'status' ? (
+                <Select value={editValue} onValueChange={setEditValue}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map(status => (
+                      <SelectItem key={status} value={status}>{status}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : editing.field === 'instructions' ? (
+                <Textarea
+                  value={editValue}
+                  onChange={e => setEditValue(e.target.value)}
+                  rows={5}
+                  placeholder="Enter instructions..."
+                />
+              ) : editing.field === 'delivery_date' ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <Calendar1Icon className="mr-2 h-4 w-4" />
+                      {editValue
+                        ? format(new Date(editValue), "yyyy-MM-dd")
+                        : "Pick a delivery date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={editValue ? new Date(editValue) : undefined}
+                      onSelect={(date) => {
+                        if (date) setEditValue(format(date, "yyyy-MM-dd"));
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              ) : (
+                <Input
+                  value={editValue}
+                  onChange={e => setEditValue(e.target.value)}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* ✅ History Modal - Only render when open */}
       {historyModalOpen && (
         <Dialog open={historyModalOpen} onOpenChange={setHistoryModalOpen}>
