@@ -9,15 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Edit, Trash2, SmartphoneIcon, CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import * as React from 'react';
 
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
-  React.useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-}
-
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Dashboard', href: '/dashboard' },
   { title: 'Mpesa Prompting', href: '/stk' },
@@ -39,25 +30,19 @@ interface SheetOrder {
 
 export default function Index() {
   const { props } = usePage();
-  const { orders } = props as unknown as { orders: { data: SheetOrder[] } };
+  const { orders, filters } = props as unknown as {
+    orders: { data: SheetOrder[] };
+    filters: { search?: string };
+  };
 
-  const [filter, setFilter] = React.useState('');
-  const [searchValue, setSearchValue] = React.useState(''); // raw input
+  const [searchValue, setSearchValue] = React.useState(filters?.search || '');
   const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
   const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
   const [phoneNumbers, setPhoneNumbers] = React.useState<Record<number, string>>({});
   const [loadingOrder, setLoadingOrder] = React.useState<SheetOrder | null>(null);
   const [paymentResult, setPaymentResult] = React.useState<{ status: "Success" | "Failed"; receipt?: string; amount?: number } | null>(null);
 
-  const debouncedFilter = useDebounce(filter, 250);
-
-  const filteredOrders = React.useMemo(() => {
-    return orders.data.filter(order =>
-      order.order_no.toLowerCase().includes(debouncedFilter.toLowerCase()) ||
-      order.client_name.toLowerCase().includes(debouncedFilter.toLowerCase()) ||
-      (phoneNumbers[order.id] ?? order.phone).toLowerCase().includes(debouncedFilter.toLowerCase())
-    );
-  }, [orders.data, debouncedFilter, phoneNumbers]);
+  const filteredOrders = orders.data; // ✅ use backend results
 
   const payOrder = async (order: SheetOrder) => {
     const phone = phoneNumbers[order.id] ?? order.phone;
@@ -132,17 +117,19 @@ export default function Index() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Stk" />
 
-      {/* Filter */}
+      {/* 🔎 Search Filter */}
       <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between mb-4 p-2">
         <Input
           placeholder="Filter by order, client, or phone"
           value={searchValue}
           onChange={e => setSearchValue(e.target.value)}
-          className="flex-1"
+         className="flex-1 h-10 sm:h-11 px-3 text-sm sm:text-base rounded-md border border-input bg-background focus-visible:ring-2 focus-visible:ring-primary"
         />
         <div className="flex gap-2">
           <Button
-            onClick={() => setFilter(searchValue.trim())}
+            onClick={() => {
+              router.get('/stk', { search: searchValue.trim() }, { preserveState: true, replace: true });
+            }}
           >
             Search
           </Button>
@@ -150,7 +137,7 @@ export default function Index() {
             variant="outline"
             onClick={() => {
               setSearchValue('');
-              setFilter('');
+              router.get('/stk', {}, { preserveState: true, replace: true });
             }}
           >
             Clear
@@ -158,7 +145,7 @@ export default function Index() {
         </div>
       </div>
 
-      {/* Cards */}
+      {/* 📦 Cards */}
       {filteredOrders.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">No orders available.</div>
       ) : (
@@ -170,6 +157,7 @@ export default function Index() {
                 <div className="text-xs text-muted-foreground truncate">Client: {order.client_name}</div>
                 <div className="text-xs">Amount: {order.amount} | Qty: {order.quantity}</div>
                 <div className="text-xs">Status: {order.status} </div>
+                <div className="text-xs">Product: {order.product_name} </div>
                 <div className="text-xs text-muted-foreground truncate">
                   Phone: <Input
                     value={phoneNumbers[order.id] ?? order.phone}
@@ -186,17 +174,14 @@ export default function Index() {
                 <Button size="sm" variant="outline" onClick={() => setEditingOrder(order)}>
                   <Edit size={16} />
                 </Button>
-                <Button size="sm" variant="destructive" onClick={() => setDeletingOrder(order)}>
-                  <Trash2 size={16} />
-                </Button>
+                
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* ✅ Modals */}
-      {/* Edit Modal */}
+      {/* ✏️ Edit Modal */}
       <Dialog open={!!editingOrder} onOpenChange={open => !open && setEditingOrder(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -216,7 +201,7 @@ export default function Index() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Modal */}
+      {/* 🗑️ Delete Modal */}
       <Dialog open={!!deletingOrder} onOpenChange={open => !open && setDeletingOrder(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -232,7 +217,7 @@ export default function Index() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment Modal */}
+      {/* 💳 Payment Modal */}
       <Dialog open={!!loadingOrder} onOpenChange={() => {}}>
         <DialogContent className="max-w-sm">
           {!paymentResult ? (

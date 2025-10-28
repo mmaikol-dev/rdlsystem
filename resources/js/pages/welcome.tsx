@@ -15,7 +15,7 @@ interface LoginProps {
 
 export default function Login({ status, canResetPassword }: LoginProps) {
     return (
-        <AuthLayout title="Realdea Courier." description="Enter your email and password below to log in">
+        <AuthLayout title="Realdeal Courier." description="Enter your email and password below to log in">
             <Head title="Log in" />
 
             <Form method="post" action={route('login')} resetOnSuccess={['password']} className="flex flex-col gap-6">

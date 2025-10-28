@@ -23,61 +23,64 @@ class SheetController extends Controller
      * Display a listing of the resource.
      */
     public function index()
-{
-    $query = Sheet::select(
-        'id',
-        'sheet_id',
-        'sheet_name',
-        'shopify_name',
-        'access_token',
-        'country',
-        'cc_agents',
-        'sku'
-    );
-
-    // If logged-in user is a merchant, filter sheets by matching user name with sheet_name
-    if (auth()->user()->roles === 'merchant') {
-        $query->where('sheet_name', auth()->user()->name);
+    {
+        $query = Sheet::select(
+            'id',
+            'sheet_id',
+            'sheet_name',
+            'shopify_name',
+            'access_token',
+            'country',
+            'cc_agents',
+            'sku'
+        );
+    
+        // If logged-in user is a merchant, filter sheets by matching user name with sheet_name
+        if (auth()->user()->roles === 'merchant') {
+            $query->where('sheet_name', auth()->user()->name);
+        }
+    
+        $sheets = $query->orderBy('created_at', 'desc')->get();
+    
+        return Inertia::render('sheets/index', [
+            'sheets' => $sheets,
+        ]);
     }
+    
+    
 
-    $sheets = $query->get();
 
-    return Inertia::render('sheets/index', [
-        'sheets' => $sheets,
-    ]);
+
+public function viewSheetData($sheetId, Request $request)
+{
+    try {
+        $client = new \Google_Client();
+        $client->setAuthConfig(storage_path('project-423911-84ac0fbdde59.json'));
+        $client->addScope(\Google_Service_Sheets::SPREADSHEETS);
+        $service = new \Google_Service_Sheets($client);
+
+        $spreadsheet = $service->spreadsheets->get($sheetId);
+        $availableSheets = array_map(fn($sheet) => $sheet->properties->title, $spreadsheet->sheets);
+
+        // Use requested sheet name or default to first
+        $sheetName = $request->get('sheetName', $availableSheets[0]);
+
+        $range = $sheetName . '!A1:R1000';
+        $sheetData = $service->spreadsheets_values->get($sheetId, $range)->getValues();
+
+        return response()->json([
+            'availableSheets' => $availableSheets,
+            'sheetData' => $sheetData,
+            'activeSheet' => $sheetName,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Failed to fetch sheet data',
+            'message' => $e->getMessage()
+        ], 500);
+    }
 }
 
-
-
-    public function viewSheetData($sheetId)
-    {
-        try {
-            $client = new \Google_Client();
-            $client->setAuthConfig(storage_path('project-423911-84ac0fbdde59.json'));
-            $client->addScope(\Google_Service_Sheets::SPREADSHEETS);
-            $service = new \Google_Service_Sheets($client);
-    
-            $spreadsheet = $service->spreadsheets->get($sheetId);
-            $availableSheets = array_map(fn($sheet) => $sheet->properties->title, $spreadsheet->sheets);
-    
-            // Default to first sheet
-            $sheetName = $availableSheets[0];
-            $range = $sheetName . '!A1:R1000';
-            $sheetData = $service->spreadsheets_values->get($sheetId, $range)->getValues();
-    
-            return response()->json([
-                'availableSheets' => $availableSheets,
-                'sheetData' => $sheetData
-            ]);
-    
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to fetch sheet data',
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-    
 
     /**
      * Show the form for creating a new resource.

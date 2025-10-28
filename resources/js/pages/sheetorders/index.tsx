@@ -1,3 +1,4 @@
+
 "use client";
 
 import AppLayout from '@/layouts/app-layout';
@@ -7,8 +8,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Badge } from "@/components/ui/badge"
 import { Calendar1Icon, CopyIcon, EyeIcon, FilterIcon, MessageCircleMoreIcon, MoreHorizontal, PlusIcon, RefreshCwIcon, Send, Trash2Icon } from "lucide-react";
 import * as React from 'react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { PhoneIcon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from '@/components/ui/calendar';
@@ -40,26 +51,30 @@ const STATUS_OPTIONS = [
   'Scheduled',
   'Dispatched',
   'Followup',
+  'Duplicate',
   'Cancelled',
   'Pending',
   'Expired',
   'Returned',
-  'Duplicate',
   'WrongContact',
   'Delivered',
-  'New Orders', // added
-
+  'New Orders',
 ] as const;
 
 const statusColors: Record<string, string> = {
-  Delivered: "text-green-600 font-semibold",
-  Pending: "text-yellow-600 font-semibold",
   Scheduled: "text-blue-600 font-semibold",
-  Dispatched: "text-blue-600 font-semibold",
-  Cancelled: "text-red-600 font-semibold",
+  Dispatched: "text-indigo-600 font-semibold",
   Followup: "text-purple-600 font-semibold",
+  Duplicate: "text-pink-600 font-semibold",
+  Cancelled: "text-red-600 font-semibold",
+  Pending: "text-yellow-600 font-semibold",
+  Expired: "text-orange-600 font-semibold",
+  Returned: "text-rose-600 font-semibold",
   WrongContact: "text-gray-600 italic",
+  Delivered: "text-green-600 font-semibold",
+  "New Orders": "text-teal-600 font-semibold",
 };
+
 
 
 const BREADCRUMBS: BreadcrumbItem[] = [
@@ -132,24 +147,31 @@ const TableRowMemo = React.memo(
         : "New Orders"
       : col === "delivery_date" && order.delivery_date
       ? format(new Date(order.delivery_date), "yyyy-MM-dd") // 👈 show only date
-      : String(order[col] || "");
+      : String(order[col as keyof SheetOrder] || "");
 
-    const colorClass =
-      col === "status" ? statusColors[value] || "" : "";
+   // ✅ Apply green color to all columns if the row has a code value
+const hasCode = order.code && order.code.trim() !== "";
 
-    return (
-      <TableCell
-        key={col}
-        className={`cursor-pointer min-w-[130px] max-w-[130px] truncate ${
-          highlighted[key] ? "bg-green-200" : ""
-        } ${colorClass}`}
-        onClick={() => onEdit(order, col)}
-        title={value}
-      >
+const colorClass =
+  col === "status"
+    ? statusColors[value] || ""
+    : hasCode
+    ? "text-green-600 font-semibold"
+    : "";
 
-        {value}
-      </TableCell>
-    );
+return (
+  <TableCell
+    key={col}
+    className={`cursor-pointer min-w-[130px] max-w-[130px] truncate ${
+      highlighted[key] ? "bg-green-200" : ""
+    } ${colorClass}`}
+    onClick={() => onEdit(order, col)}
+    title={value}
+  >
+    {value}
+  </TableCell>
+);
+
   })}
 
   <TableCell className="text-right flex space-x-1 justify-end sticky right-0 bg-background z-10">
@@ -175,6 +197,7 @@ const TableRowMemo = React.memo(
       className="p-0 w-5 h-5 flex items-center justify-center"
       variant="ghost"
       onClick={() => onHistory(order.id, order.order_no)}
+     
       title="View History"
     >
       <EyeIcon className="w-4 h-4" />
@@ -230,9 +253,10 @@ const TableRowMemo = React.memo(
 export default function Index() {
   const { props } = usePage();
   
-  const { orders, merchantUsers, ccUsers, merchantData } = props as unknown as {
+  const { orders, merchantUsers,totalOrders, ccUsers, merchantData } = props as unknown as {
     orders: { data: SheetOrder[], links: any[] },
     merchantUsers: string[],
+    totalOrders: number;
     ccUsers: string[],
     merchantData: Record<string, { sheet_id: string; sheet_names: string[] }>,
   };
@@ -251,6 +275,60 @@ export default function Index() {
   const [selectedOrderNo, setSelectedOrderNo] = React.useState<string | null>(null);
   const [whatsappAlert, setWhatsappAlert] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
+const [dialNumber, setDialNumber] = React.useState("");
+const [callStatus, setCallStatus] = React.useState<"Idle"|"Calling"|"Connected"|"Ended">("Idle");
+const [callTimer, setCallTimer] = React.useState(0);
+const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+
+const startCall = async () => {
+  if (!dialNumber) return;
+  setCallStatus("Calling");
+
+  try {
+    const response = await fetch("api/make-call", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: dialNumber,
+      }),
+    });
+
+    if (!response.ok) throw new Error("Failed to initiate call");
+
+    // Wait until AT connects the call (backend callback can update status)
+    setTimeout(() => {
+      setCallStatus("Connected");
+      setCallTimer(0);
+
+      timerRef.current = setInterval(() => {
+        setCallTimer((t) => t + 1);
+      }, 1000);
+    }, 2000);
+  } catch (error) {
+    console.error(error);
+    setCallStatus("Idle");
+    alert("Call failed ❌");
+  }
+};
+
+
+const endCall = async () => {
+  setCallStatus("Ended");
+  if (timerRef.current) clearInterval(timerRef.current);
+
+  try {
+    await fetch("api/end-call", { method: "POST" });
+  } catch (err) {
+    console.error("Failed to end call", err);
+  }
+};
+
+
+const resetCall = () => {
+  setDialNumber("");
+  setCallStatus("Idle");
+  setCallTimer(0);
+};
 
   // ✅ Memoize user permissions to prevent re-computation
   const userPermissions = React.useMemo(() => {
@@ -413,14 +491,124 @@ export default function Index() {
         </div>
       )}
 
-      <div className="flex justify-end mb-2 space-x-2 pt-4 pr-4">
-        {/* Filter Orders */}
+<div className="flex justify-between items-center mb-2 pt-4 px-4">
+  {/* Left side - Total Orders */}
+  <Badge className="bg-black text-white px-3 py-1 rounded">
+    Total: {totalOrders}
+  </Badge>
+  <div className="flex space-x-2">
+  {/* Filter Orders */}
         <Button
           className="h-8 w-8 p-0 text-sm"
           onClick={() => setFilterDialogOpen(true)}
         >
           <FilterIcon className="h-4 w-4" />
         </Button>
+    
+
+        <Sheet>
+      <SheetTrigger asChild>
+        <Button className="h-8 w-8 p-0 text-sm">
+          <PhoneIcon className="h-4 w-4" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="right" className="w-[350px] sm:w-[400px]">
+        <SheetHeader>
+          <SheetTitle>Phone Panel</SheetTitle>
+        </SheetHeader>
+
+        <Tabs defaultValue="dialpad" className="mt-4">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="dialpad">Dial Pad</TabsTrigger>
+            <TabsTrigger value="incoming">
+              Incoming <Badge variant="secondary" className="ml-1">2</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="missed">
+              Missed <Badge variant="destructive" className="ml-1">1</Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Dial Pad */}
+          <TabsContent value="dialpad" className="mt-4 space-y-4">
+            <div className="space-y-2">
+              <Input
+                value={dialNumber}
+                onChange={(e) => setDialNumber(e.target.value)}
+                placeholder="Enter number"
+                className="text-lg text-center"
+              />
+              <div className="text-center text-sm text-muted-foreground">
+                {callStatus} {callStatus === "Connected" && `⏱ ${callTimer}s`}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {["1","2","3","4","5","6","7","8","9","*","0","#"].map((num) => (
+                <Button
+                  key={num}
+                  className="h-12 p-0 text-sm"
+                  onClick={() => setDialNumber(dialNumber + num)}
+                >
+                  {num}
+                </Button>
+              ))}
+            </div>
+
+            <div className="flex justify-center space-x-4 mt-4">
+              {callStatus === "Idle" && (
+                <Button
+                  className="bg-green-600 hover:bg-green-700 px-6 text-white"
+                  onClick={startCall}
+                >
+                  Call
+                </Button>
+              )}
+              {callStatus === "Calling" && (
+                <Button
+                  className="bg-yellow-500 hover:bg-yellow-600 px-6 text-white"
+                  disabled
+                >
+                  Calling...
+                </Button>
+              )}
+              {callStatus === "Connected" && (
+                <Button
+                  className="bg-red-600 hover:bg-red-700 px-6 text-white"
+                  onClick={endCall}
+                >
+                  End Call
+                </Button>
+              )}
+              {callStatus === "Ended" && (
+                <Button variant="secondary" onClick={resetCall}>
+                  Reset
+                </Button>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Incoming Calls */}
+          <TabsContent value="incoming" className="mt-4 space-y-2">
+            <div className="p-2 border rounded-md flex items-center">
+              📞 John Doe - 0722000000
+            </div>
+            <div className="p-2 border rounded-md flex items-center">
+              📞 Jane Smith - 0733000000
+            </div>
+          </TabsContent>
+
+          {/* Missed Calls */}
+          <TabsContent value="missed" className="mt-4 space-y-2">
+            <div className="p-2 border rounded-md text-red-600 flex items-center">
+              ❌ Missed - 0700111222
+            </div>
+          </TabsContent>
+        </Tabs>
+      </SheetContent>
+    </Sheet>
+
+
+
 
         {/* Refresh Button */}
         <Button
@@ -437,6 +625,7 @@ export default function Index() {
         >
           <PlusIcon className="h-4 w-4" />
         </Button>
+        </div>
       </div>
 
       <div className="border rounded-lg">
@@ -483,53 +672,54 @@ export default function Index() {
 
       <div className="mt-4 flex justify-center">
         <Pagination>
-          <PaginationContent>
-            {/* Previous Button */}
-            <PaginationItem>
-              <PaginationPrevious
-                as="button"
-                disabled={!orders.links.find(link => link.label === 'Previous')?.url}
-                onClick={() => {
-                  const prev = orders.links.find(link => link.label === 'Previous')?.url;
-                  if (prev) router.get(prev, {}, { preserveState: true });
-                }}
-              />
-            </PaginationItem>
+  <PaginationContent>
+    {/* Previous */}
+    <PaginationItem>
+      <PaginationPrevious
+        as="button"
+        disabled={!orders.links.find(l => l.label.includes("Previous"))?.url}
+        onClick={() => {
+          const prev = orders.links.find(l => l.label.includes("Previous"))?.url;
+          if (prev) router.get(prev, {}, { preserveState: true, preserveScroll: true });
+        }}
+      />
+    </PaginationItem>
 
-            {/* Page Numbers */}
-            {orders.links
-              .filter(link => !['Previous', 'Next'].includes(link.label))
-              .map((link, index) => (
-                <PaginationItem key={index}>
-                  <PaginationLink
-                    as="button"
-                    isActive={link.active}
-                    onClick={() => {
-                      if (link.url) router.get(link.url, {}, { preserveState: true });
-                    }}
-                  >
-                    {link.label}
-                  </PaginationLink>
-                </PaginationItem>
-              ))}
+    {/* Page Numbers */}
+    {orders.links
+      .filter(l => !l.label.includes("Previous") && !l.label.includes("Next"))
+      .map(link => (
+        <PaginationItem key={link.label}>
+          <PaginationLink
+            as="button"
+            isActive={link.active}
+            aria-current={link.active ? "page" : undefined}
+            onClick={() => {
+              if (link.url) router.get(link.url, {}, { preserveState: true, preserveScroll: true });
+            }}
+          >
+            {link.label}
+          </PaginationLink>
+        </PaginationItem>
+      ))}
 
-            {/* Next Button */}
-            <PaginationItem>
-              <PaginationNext
-                as="button"
-                disabled={!orders.links.find(link => link.label === 'Next')?.url}
-                onClick={() => {
-                  const next = orders.links.find(link => link.label === 'Next')?.url;
-                  if (next) router.get(next, {}, { preserveState: true });
-                }}
-              />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
+    {/* Next */}
+    <PaginationItem>
+      <PaginationNext
+        as="button"
+        disabled={!orders.links.find(l => l.label.includes("Next"))?.url}
+        onClick={() => {
+          const next = orders.links.find(l => l.label.includes("Next"))?.url;
+          if (next) router.get(next, {}, { preserveState: true, preserveScroll: true });
+        }}
+      />
+    </PaginationItem>
+  </PaginationContent>
+</Pagination>
       </div>
 
       {/* ✅ Optimized Filter Dialog */}
-      {filterDialogOpen && (
+          {filterDialogOpen && (
   <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
     <DialogContent className="max-w-6xl">
       <DialogHeader>
@@ -1007,6 +1197,7 @@ export default function Index() {
     </div>
   </DialogContent>
 </Dialog>
+
 
 
     </AppLayout>

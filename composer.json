@@ -10,6 +10,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
+        "africastalking/africastalking": "^3.0",
         "barryvdh/laravel-dompdf": "^3.1",
         "google/apiclient": "^2.0",
         "inertiajs/inertia-laravel": "^2.0",

@@ -18,6 +18,7 @@ class Whatsapp extends Model
         'message',
         'status',
         'sid',
+        'user',
         'type',
     ];
 }

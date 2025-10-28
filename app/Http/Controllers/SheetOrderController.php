@@ -6,24 +6,27 @@ use App\Models\SheetOrder;
 use App\Models\OrderHistory;
 use Illuminate\Support\Carbon;
 use App\Models\User;
+use App\Models\Sheet;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class SheetOrderController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index(Request $request)
     {
-        $query = SheetOrder::query();
 
-        // If logged-in user is merchant, restrict orders
+          // 🚫 Block agents completely
+    if (auth()->user()->roles === 'agent') {
+        return inertia('Errors/AccessDenied', [
+            'message' => 'Access not allowed. Please request from the IT team.',
+        ]);
+    }
+        $query = SheetOrder::query();
+    
         if (auth()->user()->roles === 'merchant') {
             $query->where('merchant', auth()->user()->name);
         }
-
-        // Apply text filters dynamically (except status, merchant, cc_email)
+    
         foreach ($request->all() as $key => $value) {
             if (!empty($value) && \Schema::hasColumn('sheet_orders', $key)) {
                 if (!in_array($key, ['status', 'merchant', 'cc_email'])) {
@@ -31,47 +34,43 @@ class SheetOrderController extends Controller
                 }
             }
         }
-
-        // ✅ Multiple status filter including "New Orders"
+    
         if ($request->filled('status')) {
             $statuses = is_array($request->status) ? $request->status : explode(',', $request->status);
-
             $query->where(function($q) use ($statuses) {
                 if (in_array('New Orders', $statuses)) {
                     $q->orWhereNull('status')->orWhere('status', '');
                 }
-
                 $otherStatuses = array_diff($statuses, ['New Orders']);
                 if (!empty($otherStatuses)) {
                     $q->orWhereIn('status', $otherStatuses);
                 }
             });
         }
-
-        // ✅ Multiple merchant filter (skip if role is merchant, since already restricted)
+    
         if ($request->filled('merchant') && auth()->user()->role !== 'merchant') {
             $merchants = is_array($request->merchant) ? $request->merchant : explode(',', $request->merchant);
             $query->whereIn('merchant', $merchants);
         }
-
-        // ✅ Multiple cc_email filter
+    
         if ($request->filled('cc_email')) {
             $ccs = is_array($request->cc_email) ? $request->cc_email : explode(',', $request->cc_email);
             $query->whereIn('cc_email', $ccs);
         }
-
-        // ✅ Date range filter
+    
         if ($request->filled('from_date') && $request->filled('to_date')) {
             $from = Carbon::parse($request->from_date, 'Africa/Nairobi')->startOfDay();
             $to = Carbon::parse($request->to_date, 'Africa/Nairobi')->endOfDay();
             $query->whereBetween('delivery_date', [$from, $to]);
         }
-
+    
         $query->orderBy('created_at', 'desc');
-
+    
+        // Clone before pagination to get total count that respects filters
+        $totalOrders = (clone $query)->count();
+    
         $orders = $query->paginate(50)->appends($request->all());
-
-        // fetch merchants with grouped sheet_id + sheet_name
+    
         $merchantData = SheetOrder::select('merchant', 'sheet_id', 'sheet_name')
             ->whereNotNull('merchant')
             ->groupBy('merchant', 'sheet_id', 'sheet_name')
@@ -79,58 +78,49 @@ class SheetOrderController extends Controller
             ->groupBy('merchant')
             ->map(function ($items, $merchant) {
                 return [
-                    'sheet_id'   => $items->first()->sheet_id,
-                    'sheet_names'=> $items->pluck('sheet_name')->unique()->values(),
+                    'sheet_id'    => $items->first()->sheet_id,
+                    'sheet_names' => $items->pluck('sheet_name')->unique()->values(),
                 ];
             });
-
-        $currentStore = auth()->user()->store_name;
-
-        $merchantUsers = User::where('roles', 'merchant')
-            ->where('store_name', $currentStore)
-            ->pluck('name');
-
-        $ccUsers = User::where('roles', 'callcenter1')
-            ->where('store_name', $currentStore)
-            ->pluck('name');
-
+    
+        $merchantUsers =  Sheet::distinct()->pluck('sheet_name');
+        $ccUsers = User::where('roles', 'callcenter1')->pluck('name');
+    
         return inertia('sheetorders/index', [
-            'orders'       => $orders,
-            'filters'      => $request->all(),
-            'merchantUsers'=> $merchantUsers,
-            'merchantData' => $merchantData,
-            'ccUsers'      => $ccUsers,
+            'orders'        => $orders,
+            'filters'       => $request->all(),
+            'merchantUsers' => $merchantUsers,
+            'merchantData'  => $merchantData,
+            'ccUsers'       => $ccUsers,
+            'totalOrders'   => $totalOrders, // ✅ added total order count
         ]);
     }
+    
+
 
     public function histories(SheetOrder $order)
     {
         $histories = $order->histories()->with('user')->latest()->get(); 
-    
-        return response()->json([
-            'histories' => $histories
-        ]);
+        return response()->json(['histories' => $histories]);
     }
 
-    /**
-     * Generate next order number based on sheet_name
-     */
     public function generateOrderNumber(Request $request)
     {
         $request->validate([
-            'sheet_name' => 'required|string|max:255'
+            'sheet_name' => 'required|string|max:255',
+            'sheet_id'   => 'nullable|string|max:255'
         ]);
 
-        $orderNumber = $this->getNextOrderNumber($request->sheet_name);
+        $orderNumber = $this->getNextOrderNumber(
+            $request->sheet_name,
+            $request->sheet_id
+        );
 
         return response()->json([
             'order_number' => $orderNumber
         ]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -160,8 +150,11 @@ class SheetOrderController extends Controller
             'sheet_name'    => 'nullable|string|max:255',
         ]);
 
-        // ✅ Generate order number dynamically
-        $validated['order_no'] = $this->getNextOrderNumber($request->sheet_name ?? 'DefaultSheet');
+        // Generate order number with both sheet_name and sheet_id
+        $validated['order_no'] = $this->getNextOrderNumber(
+            $request->sheet_name ?? 'DefaultSheet',
+            $request->sheet_id
+        );
 
         SheetOrder::create($validated);
 
@@ -198,6 +191,7 @@ class SheetOrderController extends Controller
             'delivery_date' => 'date',
             'cc_email'      => 'string|max:255',
             'status'        => 'string|max:50',
+             'instructions'  => 'nullable|string',
         ];
 
         $validated = $request->validate([
@@ -217,7 +211,11 @@ class SheetOrderController extends Controller
             ]);
         }
 
-        return redirect()->back()->with('success', 'Order updated successfully.');
+        return redirect()->route('sheetorders.index', array_merge(
+            request()->except('status'), // remove 'status' filter
+            ['success' => 'Order updated successfully.']
+        ));
+        
     }
 
     public function destroy($id)
@@ -230,11 +228,17 @@ class SheetOrderController extends Controller
     }
 
     /**
-     * 🔑 Private helper to get the next order number
+     * ðŸ”‘ Private helper to get the next order number using sheet_name + sheet_id
      */
-    private function getNextOrderNumber(string $sheetName): string
+    private function getNextOrderNumber(string $sheetName, ?string $sheetId = null): string
     {
-        $lastNumber = SheetOrder::where('sheet_name', $sheetName)
+        $query = SheetOrder::where('sheet_name', $sheetName);
+
+        if ($sheetId) {
+            $query->where('sheet_id', $sheetId);
+        }
+
+        $lastNumber = $query
             ->whereRaw('order_no REGEXP "^[A-Z]+[0-9]+$"')
             ->selectRaw('MAX(CAST(SUBSTRING(order_no, LENGTH(REGEXP_SUBSTR(order_no, "^[A-Z]+")) + 1) AS UNSIGNED)) as max_number,
                          REGEXP_SUBSTR(order_no, "^[A-Z]+") as prefix')

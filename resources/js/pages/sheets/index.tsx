@@ -10,6 +10,14 @@ import {
   CardTitle,
   CardDescription
 } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,29 +55,98 @@ interface SheetDataModalProps {
 function SheetDataModal({ open, onOpenChange, sheetId }: SheetDataModalProps) {
   const [sheetData, setSheetData] = React.useState<string[][]>([]);
   const [availableSheets, setAvailableSheets] = React.useState<string[]>([]);
+  const [activeSheet, setActiveSheet] = React.useState<string>('');
   const [loading, setLoading] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!open) return;
+  const fetchData = (sheetName?: string) => {
     setLoading(true);
-    fetch(`/sheets/${sheetId}/view`)
+    const url = sheetName
+      ? `/sheets/${sheetId}/view?sheetName=${encodeURIComponent(sheetName)}`
+      : `/sheets/${sheetId}/view`;
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         setSheetData(data.sheetData || []);
         setAvailableSheets(data.availableSheets || []);
+        setActiveSheet(sheetName || data.availableSheets?.[0] || '');
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  React.useEffect(() => {
+    if (!open) return;
+    fetchData();
   }, [open, sheetId]);
+
+  const handlePrev = () => {
+    if (!availableSheets.length) return;
+    const idx = availableSheets.indexOf(activeSheet);
+    if (idx > 0) {
+      fetchData(availableSheets[idx - 1]);
+    }
+  };
+
+  const handleNext = () => {
+    if (!availableSheets.length) return;
+    const idx = availableSheets.indexOf(activeSheet);
+    if (idx < availableSheets.length - 1) {
+      fetchData(availableSheets[idx + 1]);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-6xl w-[90vw]">
         <DialogHeader>
           <DialogTitle>Sheet Data</DialogTitle>
-          <DialogDescription>Available Sheets: {availableSheets.join(', ')}</DialogDescription>
+          <DialogDescription>
+            Navigate between sheets from this file.
+          </DialogDescription>
         </DialogHeader>
-        <div className="overflow-auto max-h-[500px] mt-2">
+
+       {/* Navigation Controls */}
+{availableSheets.length > 0 && (
+  <div className="flex items-center justify-between mb-2">
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handlePrev}
+      disabled={availableSheets.indexOf(activeSheet) <= 0}
+    >
+      Previous
+    </Button>
+
+    <Select
+      value={activeSheet}
+      onValueChange={(value) => fetchData(value)}
+    >
+      <SelectTrigger className="w-[200px]">
+        <SelectValue placeholder="Select sheet" />
+      </SelectTrigger>
+      <SelectContent>
+        {availableSheets.map((name) => (
+          <SelectItem key={name} value={name}>
+            {name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handleNext}
+      disabled={availableSheets.indexOf(activeSheet) >= availableSheets.length - 1}
+    >
+      Next
+    </Button>
+  </div>
+)}
+
+
+        {/* Table Content */}
+        <div className="overflow-auto max-h-[75vh] mt-2">
           {loading ? (
             <div className="text-center py-4">Loading...</div>
           ) : sheetData.length === 0 ? (
@@ -79,7 +156,9 @@ function SheetDataModal({ open, onOpenChange, sheetId }: SheetDataModalProps) {
               <thead>
                 <tr>
                   {sheetData[0].map((header, i) => (
-                    <th key={i} className="border p-1 bg-gray-100">{header}</th>
+                    <th key={i} className="border p-1 bg-gray-100">
+                      {header}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -87,7 +166,9 @@ function SheetDataModal({ open, onOpenChange, sheetId }: SheetDataModalProps) {
                 {sheetData.slice(1).map((row, rowIndex) => (
                   <tr key={rowIndex}>
                     {row.map((cell, cellIndex) => (
-                      <td key={cellIndex} className="border p-1">{cell}</td>
+                      <td key={cellIndex} className="border p-1">
+                        {cell}
+                      </td>
                     ))}
                   </tr>
                 ))}
@@ -95,8 +176,12 @@ function SheetDataModal({ open, onOpenChange, sheetId }: SheetDataModalProps) {
             </table>
           )}
         </div>
+
+        {/* Footer */}
         <div className="flex justify-end mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -157,7 +242,7 @@ export default function SheetsView() {
       <Head title="Sheets" />
 
       <div className="flex flex-col gap-4 p-4">
-        {/* Top Controls: Filter + Create Button */}
+        {/* Top Controls */}
         <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between mb-4">
           <Input
             placeholder="Filter sheets by name, Shopify, or country"
@@ -166,17 +251,17 @@ export default function SheetsView() {
             className="flex-1"
           />
           {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
-    <>
-          <Button
-            size="sm"
-            onClick={() => setCreatingSheet(true)}
-            className="flex items-center gap-1"
-          >
-            <Plus size={16} /> Create New Sheet
-          </Button>
-          </>)}
+            <Button
+              size="sm"
+              onClick={() => setCreatingSheet(true)}
+              className="flex items-center gap-1"
+            >
+              <Plus size={16} /> Create New Sheet
+            </Button>
+          )}
         </div>
 
+        {/* Sheets Grid */}
         {filteredSheets.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             No sheets available.
@@ -217,20 +302,24 @@ export default function SheetsView() {
                   ))}
                 </CardContent>
                 <div className="flex gap-2 justify-end p-2 flex-wrap">
-                {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
-    <>
-                  <Button size="sm" variant="outline" onClick={() => handleEditOpen(sheet)}>
-                    <Edit size={16} />
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => setDeletingSheet(sheet)}>
-                    <Trash2 size={16} />
-                  </Button>
-                  </>
-                )}
-                  <Button size="sm" variant="outline" onClick={() => {
-                    setViewSheetId(sheet.sheet_id);
-                    setViewModalOpen(true);
-                  }}>
+                  {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => handleEditOpen(sheet)}>
+                        <Edit size={16} />
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => setDeletingSheet(sheet)}>
+                        <Trash2 size={16} />
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setViewSheetId(sheet.sheet_id);
+                      setViewModalOpen(true);
+                    }}
+                  >
                     <EyeIcon size={16} />
                   </Button>
                 </div>
@@ -248,7 +337,7 @@ export default function SheetsView() {
             <DialogDescription>Fill in the details for the new sheet below.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
-            {['sheet_id','sheet_name','shopify_name','country','cc_agents','sku','access_token'].map((field) => (
+            {['sheet_id','sheet_name','shopify_name','country','sku','access_token'].map((field) => (
               <Input
                 key={field}
                 value={(createValues as any)[field] || ''}
@@ -256,6 +345,13 @@ export default function SheetsView() {
                 placeholder={field.replace('_',' ').replace(/\b\w/g, l => l.toUpperCase())}
               />
             ))}
+            <textarea
+              className="w-full border rounded p-2 text-sm"
+              rows={6}
+              placeholder={`{\n  "Sheet3": ["agent1","agent2"],\n  "Sheet4": ["agent1","agent6"]\n}`}
+              value={createValues.cc_agents || ''}
+              onChange={(e) => setCreateValues({ ...createValues, cc_agents: e.target.value })}
+            />
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setCreatingSheet(false)}>Cancel</Button>
@@ -272,7 +368,7 @@ export default function SheetsView() {
             <DialogDescription>Update the sheet information below.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
-            {['sheet_id','sheet_name','shopify_name','country','cc_agents','sku','access_token'].map((field) => (
+            {['sheet_id','sheet_name','shopify_name','country','sku','access_token'].map((field) => (
               <Input
                 key={field}
                 value={(editValues as any)[field] || ''}
@@ -280,6 +376,13 @@ export default function SheetsView() {
                 placeholder={field.replace('_',' ').replace(/\b\w/g, l => l.toUpperCase())}
               />
             ))}
+            <textarea
+              className="w-full border rounded p-2 text-sm"
+              rows={6}
+              placeholder={`{\n  "Sheet3": ["agent1","agent2"],\n  "Sheet4": ["agent1","agent6"]\n}`}
+              value={editValues.cc_agents || '{\n  "sheetname": ["agent","agent"]\n}'}
+              onChange={(e) => setEditValues({ ...editValues, cc_agents: e.target.value })}
+            />
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="outline" onClick={() => setEditingSheet(null)}>Cancel</Button>

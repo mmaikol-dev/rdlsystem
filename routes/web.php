@@ -9,6 +9,8 @@ use App\Http\Controllers\SheetOrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\AiController;
+use App\Http\Controllers\AssignController;
+use App\Http\Controllers\CallcenterController;
 use App\Http\Controllers\StkController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ImportController;
@@ -18,10 +20,12 @@ use App\Models\User;
 use Carbon\Carbon;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\StatController;
+use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UndeliveredController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UnremittedController;
+use App\Http\Controllers\WaredashController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Middleware\VerifyCsrfToken;
 use Inertia\Inertia;
@@ -92,9 +96,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ]);
     })->name('dashboard');
 
+    Route::get('/webrtc/token', [CallcenterController::class, 'generateWebRTCToken']);
+    Route::get('/webrtc-token', [CallcenterController::class, 'getWebRTCToken'])->name('api.webrtc-token');
 //stats
 Route::resource('stat',StatController::class);
 
+
+Route::post('assign/reassign', [AssignController::class, 'reassign'])->name('assign.reassign');
+
+Route::resource('assign',AssignController::class);
 
 
 
@@ -103,14 +113,27 @@ Route::resource('stat',StatController::class);
     Route::get('sheetorders/{order}/histories', [SheetOrderController::class, 'histories'])
     ->name('sheetorders.histories');
     
-    //products
-  Route::get('/products/{productCode}/inventory-logs', [ProductController::class, 'inventoryLogs']);
-Route::post('/products/{product:id}/update-quantity', [ProductController::class, 'updateQuantity'])
+    Route::get('/products/{product}/inventory-logs', [ProductController::class, 'inventoryLogs'])
+    ->name('products.inventoryLogs');
+
+Route::post('/products/{product}/update-quantity', [ProductController::class, 'updateQuantity'])
     ->name('products.updateQuantity');
 
+Route::post('/products/scan-barcodes', [ProductController::class, 'scanBarcodes'])
+    ->name('products.scanBarcodes');
+
+Route::get('/products/{product}/barcode-history', [ProductController::class, 'getBarcodeHistory'])
+    ->name('products.barcodeHistory');
 
 Route::resource('products', ProductController::class);
 
+Route::post('/transfers', [TransferController::class, 'store'])->name('transfers.store');
+Route::resource('transfer', TransferController::class);
+
+
+//Warehouse Dashboard
+
+Route::resource('waredash', WaredashController::class);
 
 
 
@@ -131,11 +154,22 @@ Route::resource('products', ProductController::class);
     Route::resource('transactions',C2BTransactionController::class);
    
 //dispatch
+Route::post('/dispatch/bulk-download-waybills', [App\Http\Controllers\DispatchController::class, 'bulkDownloadWaybills'])->name('dispatch.bulkDownload');
+
+Route::put('sheet_orders/{id}', [DispatchController::class, 'update'])->name('sheet_orders.update');
+Route::delete('sheet_orders/{id}', [DispatchController::class, 'destroy'])->name('sheet_orders.destroy');
+
+
+// Or update your frontend to use /dispatch endpoints
     Route::resource('dispatch',DispatchController::class);
-    Route::get('dispatch/{order}/waybill', [DispatchController::class, 'generateWaybill'])->name('dispatch.waybill');
    
+   // Bulk assign agent route
+Route::post('/dispatch/bulk-assign', [DispatchController::class, 'bulkAssignAgent'])->name('dispatch.bulk-assign');
 //waybill
     Route::get('/waybill/download/{id}', [WaybillController::class, 'download'])->name('waybill.download');
+    Route::get('/phpinfo', function () {
+        phpinfo();
+    });
     
 
     //apscriptapi
@@ -146,6 +180,12 @@ Route::resource('products', ProductController::class);
     Route::resource('whastapp',WhatsappController::class);
     Route::post('/whatsapp/{id}/send', [WhatsappController::class, 'sendMessage'])
     ->name('whatsapp.send');
+    Route::put('/chats/{phone}', [ChatController::class, 'updateStatus']);
+    Route::get('/chats/{phone}', [ChatController::class, 'show'])->name('chats.show');
+    Route::get('/api/whatsapp/conversations', [ChatController::class, 'getConversations']);
+
+   // Route::post('/whatsapp/send-chat', [WhatsappController::class, 'sendChat'])->name('whatsapp.sendChat');
+
 
     //stkpush
 
