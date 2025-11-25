@@ -39,6 +39,9 @@ import {
   StoreIcon,
   WarehouseIcon,
   Scale3DIcon,
+  ChartBarIncreasing,
+  GitGraphIcon,
+  LineChartIcon,
 } from 'lucide-react';
 
 // --- grouped nav items by department ---
@@ -47,12 +50,13 @@ const departmentNav = [
     label: "General",
     items: [
       { title: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-      { title: 'Warehouse Dashboard', href: '/waredash', icon: WarehouseIcon},
-  
-      
+      { title: 'Warehouse Dashboard', href: '/waredash', icon: WarehouseIcon },
+      { title: 'Stats', href: '/stats', icon: LineChartIcon }
+
+
     ],
-   
-    
+
+
   },
   {
     label: "Operations",
@@ -69,11 +73,11 @@ const departmentNav = [
     label: "Inventory",
     items: [
       { title: 'Products', href: '/products', icon: BoxesIcon },
-      {title:'Transfer' ,href:'/transfer', icon:SendToBackIcon},
+      { title: 'Transfer', href: '/transfer', icon: SendToBackIcon },
       { title: 'Merchants', href: '/units', icon: UserRoundIcon },
       { title: 'Categories', href: '/categories', icon: SquareArrowDownLeftIcon },
       { title: 'Rdl Ai', href: '/ai', icon: BrainCircuitIcon },
-      
+
     ],
   },
   {

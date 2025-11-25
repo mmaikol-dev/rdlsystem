@@ -12,15 +12,10 @@ use Inertia\Inertia;
 
 class SheetOrderController extends Controller
 {
-    public function index(Request $request)
+  public function index(Request $request)
     {
-
-          // 🚫 Block agents completely
-    if (auth()->user()->roles === 'agent') {
-        return inertia('Errors/AccessDenied', [
-            'message' => 'Access not allowed. Please request from the IT team.',
-        ]);
-    }
+        
+        
         $query = SheetOrder::query();
     
         if (auth()->user()->roles === 'merchant') {
@@ -95,8 +90,6 @@ class SheetOrderController extends Controller
             'totalOrders'   => $totalOrders, // ✅ added total order count
         ]);
     }
-    
-
 
     public function histories(SheetOrder $order)
     {
@@ -211,21 +204,25 @@ class SheetOrderController extends Controller
             ]);
         }
 
-        return redirect()->route('sheetorders.index', array_merge(
-            request()->except('status'), // remove 'status' filter
-            ['success' => 'Order updated successfully.']
-        ));
-        
+        return redirect()->back()->with('success', 'Order updated successfully.');
     }
 
-    public function destroy($id)
-    {
-        $order = SheetOrder::findOrFail($id);
-        $order->delete();
-    
+   public function destroy($id)
+{
+    // Check if the logged-in user has the 'G.O.D' role
+    if (auth()->user()->roles !== 'G.O.D') {
         return redirect()->route('sheetorders.index')
-                         ->with('success', 'Order deleted successfully');
+                         ->with('error', 'Access denied. Only G.O.D can delete orders.');
     }
+
+    // Proceed to delete only if user is G.O.D
+    $order = SheetOrder::findOrFail($id);
+    $order->delete();
+
+    return redirect()->route('sheetorders.index')
+                     ->with('success', 'Order deleted successfully');
+}
+
 
     /**
      * ðŸ”‘ Private helper to get the next order number using sheet_name + sheet_id

@@ -30,16 +30,23 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
-import { PlusCircleIcon, TrashIcon } from "lucide-react";
+import { PlusCircleIcon, TrashIcon, EyeIcon, ListIcon, Grid3x3Icon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function TransferIndex() {
-  const { auth, products, agents, transfers } = usePage().props as any;
+  const { auth, products, agents, transfers, groupedTransfers, view } = usePage().props as any;
 
   const [openTransferModal, setOpenTransferModal] = useState(false);
   const [drawerDirection, setDrawerDirection] = useState<"right" | "bottom">("bottom");
   const [region, setRegion] = useState("");
   const [from, setFrom] = useState("");
-  const [rows, setRows] = useState([{ product_id: "", quantity: "", agent_id: "" }]);
+  const [rows, setRows] = useState([{ product_id: "", quantity: "", agent_id: "" , merchant: ""}]);
+  const [openFilterModal, setOpenFilterModal] = useState(false);
+  const [filterProduct, setFilterProduct] = useState("");
+  const [filterAgent, setFilterAgent] = useState("");
+  const [filterDate, setFilterDate] = useState("");
+  
+  const currentView = view || 'grouped';
 
   useEffect(() => {
     const handleResize = () => {
@@ -50,23 +57,46 @@ export default function TransferIndex() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const addRow = () => setRows([...rows, { product_id: "", quantity: "", agent_id: "" }]);
+  const addRow = () => setRows([...rows, { product_id: "", quantity: "", agent_id: "", merchant: "" }]);
   const removeRow = (index: number) => setRows(rows.filter((_, i) => i !== index));
 
   const handleChange = (index: number, field: string, value: string) => {
     const updated = [...rows];
     (updated[index] as any)[field] = value;
+  
+    if (field === "product_id") {
+      const selectedProduct = products.find((p: any) => String(p.id) === value);
+      console.log('Selected Product:', selectedProduct);
+      console.log('Unit ID:', selectedProduct?.unit_id);
+      (updated[index] as any).merchant = selectedProduct ? selectedProduct.unit_id || "" : "";
+    }
+  
     setRows(updated);
   };
-
   const handleSubmit = () => {
     router.post("/transfers", { region, from, transfers: rows });
-
     setOpenTransferModal(false);
   };
 
+  const toggleView = () => {
+    const newView = currentView === 'grouped' ? 'detailed' : 'grouped';
+    router.get("/transfer", { 
+      view: newView,
+      product_id: filterProduct,
+      agent_id: filterAgent,
+      date: filterDate
+    }, {
+      preserveState: true,
+      preserveScroll: true
+    });
+  };
+
+  const viewDetails = (productId: number, agentId: number) => {
+    router.get(`/transfers/${productId}/${agentId}`);
+  };
+
   const breadcrumbs = [
-    { title: "Transfers", href: "/transfers" },
+    { title: "Transfers", href: "/transfer" },
     { title: "Manage", href: "#" },
   ];
 
@@ -74,58 +104,147 @@ export default function TransferIndex() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Transfers" />
 
-      {/* Header */}
-      <div className="p-4 sm:p-6 flex justify-between items-center bg-white shadow-sm sticky top-0 z-30">
-        <h1 className="text-lg sm:text-2xl font-semibold text-gray-800">Transfers</h1>
-        <Button
-          onClick={() => setOpenTransferModal(true)}
-          className="flex items-center gap-2 text-white"
-        >
-          <PlusCircleIcon className="w-4 h-4" />
-          New Transfer
-        </Button>
+      <div className="flex items-center justify-between gap-2 p-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={currentView === 'grouped' ? 'default' : 'outline'}
+            onClick={toggleView}
+            className="flex items-center gap-2"
+          >
+            {currentView === 'grouped' ? (
+              <>
+                <Grid3x3Icon className="w-4 h-4" />
+                Grouped View
+              </>
+            ) : (
+              <>
+                <ListIcon className="w-4 h-4" />
+                Detailed View
+              </>
+            )}
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setOpenFilterModal(true)}
+            className="flex items-center gap-2"
+          >
+            Filter
+          </Button>
+
+          <Button
+            onClick={() => setOpenTransferModal(true)}
+            className="flex items-center gap-2 text-white"
+          >
+            <PlusCircleIcon className="w-4 h-4" />
+            New Transfer
+          </Button>
+        </div>
       </div>
 
       {/* Table Section */}
       <div className="p-4 sm:p-6 overflow-x-auto">
         <Card className="shadow-sm">
           <CardContent className="p-0">
-          <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Agent</TableHead>
-                  <TableHead>Region</TableHead>
-                  <TableHead>From</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>By</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transfers?.data?.length > 0 ? (
-                  transfers.data.map((transfer: any, index: number) => (
-                    <TableRow key={transfer.id}>
-                      <TableCell>{index + 1}</TableCell>
-                      <TableCell>{transfer.product?.name}</TableCell>
-                      <TableCell>{transfer.quantity}</TableCell>
-                      <TableCell>{transfer.agent?.name}</TableCell>
-                      <TableCell>{transfer.region}</TableCell>
-                      <TableCell>{transfer.from}</TableCell>
-                      <TableCell>{transfer.date}</TableCell>
-                      <TableCell>{transfer.transfer_by}</TableCell>
-                    </TableRow>
-                  ))
-                ) : (
+            {currentView === 'grouped' ? (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-gray-500 py-6">
-                      No transfers found.
-                    </TableCell>
+                    <TableHead>#</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Agent</TableHead>
+                    <TableHead>Total Transfers</TableHead>
+                    <TableHead>Total Quantity</TableHead>
+                    <TableHead>First Transfer</TableHead>
+                    <TableHead>Last Transfer</TableHead>
+                    <TableHead>Action</TableHead>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {groupedTransfers?.data?.length > 0 ? (
+                    groupedTransfers.data.map((item: any, index: number) => (
+                      <TableRow key={`${item.product_id}-${item.agent_id}`} className="hover:bg-gray-50">
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell className="font-medium">{item.product?.name}</TableCell>
+                        <TableCell>{item.agent?.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="font-semibold">
+                            {item.transfer_count} transfers
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="default" className="font-semibold">
+                            {item.total_quantity} units
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          {new Date(item.first_transfer_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          {new Date(item.last_transfer_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => viewDetails(item.product_id, item.agent_id)}
+                            className="flex items-center gap-1"
+                          >
+                            <EyeIcon className="w-4 h-4" />
+                            View Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-gray-500 py-6">
+                        No grouped transfers found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>Product</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Agent</TableHead>
+                    <TableHead>Region</TableHead>
+                    <TableHead>From</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>By</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transfers?.data?.length > 0 ? (
+                    transfers.data.map((transfer: any, index: number) => (
+                      <TableRow key={transfer.id}>
+                        <TableCell>{index + 1}</TableCell>
+                        <TableCell>{transfer.product?.name}</TableCell>
+                        <TableCell>{transfer.quantity}</TableCell>
+                        <TableCell>{transfer.agent?.name}</TableCell>
+                        <TableCell>{transfer.region}</TableCell>
+                        <TableCell>{transfer.from}</TableCell>
+                        <TableCell>{transfer.date}</TableCell>
+                        <TableCell>{transfer.transfer_by}</TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-gray-500 py-6">
+                        No transfers found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -146,9 +265,7 @@ export default function TransferIndex() {
             </DrawerDescription>
           </DrawerHeader>
 
-          {/* Scrollable Body */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 bg-gray-50">
-            {/* Transfer Info */}
             <Card className="shadow-sm">
               <CardContent className="p-4 sm:p-6">
                 <h3 className="text-base sm:text-lg font-semibold mb-4 text-gray-800">
@@ -171,7 +288,6 @@ export default function TransferIndex() {
               </CardContent>
             </Card>
 
-            {/* Products Section */}
             <Card className="shadow-sm">
               <CardContent className="p-4 sm:p-6">
                 <div className="flex justify-between items-center mb-4">
@@ -187,8 +303,7 @@ export default function TransferIndex() {
                   {rows.map((row, i) => (
                     <Card key={i} className="border-l-4 border-l-blue-500 bg-white">
                       <CardContent className="p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                          {/* Product */}
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Product *</label>
                             <Select value={row.product_id} onValueChange={(val) => handleChange(i, "product_id", val)}>
@@ -201,7 +316,16 @@ export default function TransferIndex() {
                             </Select>
                           </div>
 
-                          {/* Quantity */}
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700">Merchant</label>
+                            <Input
+                              readOnly
+                              value={row.merchant || ""}
+                              placeholder="Auto-filled"
+                              className="bg-gray-100"
+                            />
+                          </div>
+
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Quantity *</label>
                             <Input
@@ -213,7 +337,6 @@ export default function TransferIndex() {
                             />
                           </div>
 
-                          {/* Agent */}
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Agent *</label>
                             <Select value={row.agent_id} onValueChange={(val) => handleChange(i, "agent_id", val)}>
@@ -226,7 +349,6 @@ export default function TransferIndex() {
                             </Select>
                           </div>
 
-                          {/* Remove */}
                           <Button
                             variant="outline"
                             onClick={() => removeRow(i)}
@@ -256,7 +378,85 @@ export default function TransferIndex() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
-      
+
+      {/* Filter Modal */}
+      <Drawer open={openFilterModal} onOpenChange={setOpenFilterModal}>
+        <DrawerContent className={`
+            md:max-w-[800px] w-full h-[90vh] md:h-screen
+            md:right-0 md:left-auto md:rounded-l-2xl
+            flex flex-col overflow-hidden bg-white
+          `}>
+          <DrawerHeader className="border-b bg-white sticky top-0 z-10 p-4">
+            <DrawerTitle className="text-lg font-semibold text-gray-800">Filter Transfers</DrawerTitle>
+            <DrawerDescription className="text-sm text-gray-500">
+              Filter by product, agent, or date
+            </DrawerDescription>
+          </DrawerHeader>
+
+          <div className="p-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Product</label>
+              <Select value={filterProduct} onValueChange={setFilterProduct}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((p: any) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Agent</label>
+              <Select value={filterAgent} onValueChange={setFilterAgent}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Agent" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((a: any) => (
+                    <SelectItem key={a.id} value={String(a.id)}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Date</label>
+              <Input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DrawerFooter className="border-t flex justify-end gap-2 bg-white p-4">
+            <DrawerClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DrawerClose>
+            <Button
+              onClick={() => {
+                router.get("/transfer", {
+                  product_id: filterProduct,
+                  agent_id: filterAgent,
+                  date: filterDate,
+                  view: currentView
+                });
+                setOpenFilterModal(false);
+              }}
+              className="text-white"
+            >
+              Apply Filters
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </AppLayout>
   );
 }

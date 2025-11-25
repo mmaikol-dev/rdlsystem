@@ -26,7 +26,7 @@ class AssignController extends Controller
     
         foreach ($request->all() as $key => $value) {
             if (!empty($value) && \Schema::hasColumn('sheet_orders', $key)) {
-                if (!in_array($key, ['status', 'merchant', 'cc_email'])) {
+                if (!in_array($key, ['status', 'merchant', 'cc_email', 'product_name'])) {
                     $query->where($key, 'like', "%{$value}%");
                 }
             }
@@ -53,6 +53,11 @@ class AssignController extends Controller
         if ($request->filled('cc_email')) {
             $ccs = is_array($request->cc_email) ? $request->cc_email : explode(',', $request->cc_email);
             $query->whereIn('cc_email', $ccs);
+        }
+
+        // Add product_name filter
+        if ($request->filled('product_name')) {
+            $query->where('product_name', 'like', "%{$request->product_name}%");
         }
     
         if ($request->filled('from_date') && $request->filled('to_date')) {
@@ -81,6 +86,14 @@ class AssignController extends Controller
     
         $merchantUsers = User::where('roles', 'merchant')->pluck('name');
         $ccUsers = User::where('roles', 'callcenter1')->pluck('name');
+
+        // Get unique product names for filter
+        $productNames = SheetOrder::select('product_name')
+            ->whereNotNull('product_name')
+            ->where('product_name', '!=', '')
+            ->distinct()
+            ->orderBy('product_name')
+            ->pluck('product_name');
     
         return inertia('sheetorders/assign', [
             'orders'        => $orders,
@@ -88,31 +101,36 @@ class AssignController extends Controller
             'merchantUsers' => $merchantUsers,
             'merchantData'  => $merchantData,
             'ccUsers'       => $ccUsers,
+            'productNames'  => $productNames,
             'totalOrders'   => $totalOrders,
         ]);
     }
 
     /**
-     * Bulk reassign orders to a different CC agent
+     * Bulk reassign orders to CC agents using round-robin distribution
      */
     public function reassign(Request $request)
     {
         $request->validate([
             'order_ids' => 'required|array|min:1',
             'order_ids.*' => 'exists:sheet_orders,id',
-            'cc_email' => 'required|string',
+            'cc_emails' => 'required|array|min:1',
+            'cc_emails.*' => 'required|string',
         ]);
     
         try {
             $orders = SheetOrder::whereIn('id', $request->order_ids)->get();
+            $ccAgents = $request->cc_emails;
             $updatedCount = 0;
+            $agentIndex = 0;
     
             foreach ($orders as $sheetorder) {
+                // Round-robin: assign to agents in rotation
+                $newValue = $ccAgents[$agentIndex % count($ccAgents)];
                 $oldValue = $sheetorder->cc_email;
-                $newValue = $request->cc_email;
     
                 if ($oldValue !== $newValue) {
-                    // ✅ Log the reassignment for accountability
+                    // Log the reassignment for accountability
                     OrderHistory::create([
                         'order_id'  => $sheetorder->id,
                         'user_id'   => auth()->id(),
@@ -121,13 +139,16 @@ class AssignController extends Controller
                         'new_value' => $newValue,
                     ]);
     
-                    // ✅ Update the cc_email field
+                    // Update the cc_email field
                     $sheetorder->update(['cc_email' => $newValue]);
                     $updatedCount++;
                 }
+                
+                $agentIndex++;
             }
-    
-            return back()->with('success', "Successfully reassigned {$updatedCount} order(s) to {$request->cc_email}");
+
+            $agentsList = implode(', ', $ccAgents);
+            return back()->with('success', "Successfully reassigned {$updatedCount} order(s) using round-robin to: {$agentsList}");
         } catch (\Exception $e) {
             return back()->with('error', 'Failed to reassign orders: ' . $e->getMessage());
         }

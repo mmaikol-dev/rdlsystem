@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\InventoryLog;
 use App\Models\Barcode;
 use App\Models\Category;
+use App\Models\Unit;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,7 @@ class ProductController extends Controller
         $user = $request->user();
         $isMerchant = $user->roles === 'merchant';
         $categories = Category::select('id', 'name')->get();
+        $units = Unit::select('id', 'name', 'short_code')->get();
         $productsQuery = Product::query();
     
         // Apply merchant filter using UUIDs
@@ -32,6 +34,7 @@ class ProductController extends Controller
         return Inertia::render('products/index', [
             'products' => $products,
             'categories' => $categories,
+            'units' => $units,
         ]);
     }
 
@@ -117,6 +120,8 @@ class ProductController extends Controller
             'tax_type' => 'nullable|string',
             'notes' => 'nullable|string',
             'product_image' => 'nullable|string',
+            'category_id' => 'nullable|integer|exists:categories,id',
+            'unit_id' => 'nullable|integer|exists:units,id',
         ]);
 
         $user = $request->user();
@@ -163,8 +168,8 @@ class ProductController extends Controller
             'tax_type' => 'nullable|string',
             'notes' => 'nullable|string',
             'product_image' => 'nullable|string',
-            'category_id' => 'nullable|integer',
-            'unit_id' => 'nullable|integer',
+            'category_id' => 'nullable|integer|exists:categories,id',
+            'unit_id' => 'nullable|integer|exists:units,id',
         ]);
 
         // Update slug if name changed

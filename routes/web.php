@@ -20,6 +20,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\StatController;
+use App\Http\Controllers\StatsController;
 use App\Http\Controllers\TransferController;
 use App\Http\Controllers\UndeliveredController;
 use App\Http\Controllers\UserController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\UnremittedController;
 use App\Http\Controllers\WaredashController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Middleware\VerifyCsrfToken;
+use App\Models\Stats;
 use Inertia\Inertia;
 
 Route::get('/', function () {
@@ -127,8 +129,14 @@ Route::get('/products/{product}/barcode-history', [ProductController::class, 'ge
 
 Route::resource('products', ProductController::class);
 
+Route::get('/transfer', [TransferController::class, 'index'])->name('transfers.index');
+
+
+Route::get('/stats', [StatsController::class, 'index'])->name('stats.index');
+
 Route::post('/transfers', [TransferController::class, 'store'])->name('transfers.store');
-Route::resource('transfer', TransferController::class);
+
+Route::get('/transfers/{productId}/{agentId}', [TransferController::class, 'show'])->name('transfers.show');
 
 
 //Warehouse Dashboard

@@ -175,6 +175,11 @@ class DispatchController extends Controller
 
     public function bulkDownloadWaybills(Request $request)
     {
+        // Increase memory and execution time limits
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', 300);
+        @ini_set('max_input_time', 300);
+        
         $validated = $request->validate([
             'order_numbers' => 'required|string',
         ]);
@@ -187,30 +192,50 @@ class DispatchController extends Controller
             return back()->withErrors(['order_numbers' => 'Please provide valid order numbers.']);
         }
     
-        // Fetch orders
-        $orders = \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)->get();
-    
-        if ($orders->isEmpty()) {
-            return back()->withErrors(['order_numbers' => 'No matching orders found.']);
+        // Optional: Limit maximum orders to prevent server overload
+        if (count($orderNumbers) > 50) {
+            return back()->withErrors(['order_numbers' => 'Maximum 50 waybills allowed at once.']);
         }
     
-        // Load one combined view (all waybills together)
-        $pdf = Pdf::loadView('waybills', compact('orders'))
-            ->setPaper('a4', 'portrait')
-            ->setOption([
-                'isRemoteEnabled' => true,
-                'isHtml5ParserEnabled' => true,
+        try {
+            // Fetch orders
+            $orders = \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)->get();
+    
+            if ($orders->isEmpty()) {
+                return back()->withErrors(['order_numbers' => 'No matching orders found.']);
+            }
+    
+            // Load one combined view (all waybills together)
+            $pdf = Pdf::loadView('waybills', compact('orders'))
+                ->setPaper('a4', 'portrait')
+                ->setOption([
+                    'isRemoteEnabled' => true,
+                    'isHtml5ParserEnabled' => true,
+                    'enable_php' => false,
+                    'dpi' => 96,
+                    'defaultFont' => 'sans-serif',
+                ]);
+    
+            // Update all orders to dispatched (more efficient bulk update)
+            \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)
+                ->update(['status' => 'Dispatched']);
+    
+            $fileName = 'waybills_' . now()->format('Ymd_His') . '.pdf';
+            return $pdf->download($fileName);
+            
+        } catch (\Exception $e) {
+            // Log the error for debugging
+            \Log::error('Bulk Waybill PDF Generation Failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'order_count' => count($orderNumbers),
+                'orders' => $orderNumbers
             ]);
-    
-        // Update all orders to dispatched
-        foreach ($orders as $order) {
-            $order->update(['status' => 'Dispatched']);
+            
+            return back()->withErrors(['error' => 'Failed to generate PDF. Please try with fewer orders or contact support.']);
         }
-    
-        $fileName = 'waybills_' . now()->format('Ymd_His') . '.pdf';
-        return $pdf->download($fileName);
     }
-
+    
     public function create()
     {
         //

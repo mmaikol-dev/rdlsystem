@@ -13,7 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Edit, Trash2, Plus, Eye, PackagePlus, ChevronLeft, ScanBarcodeIcon,ChevronRight, Scan, X, ScanEyeIcon } from 'lucide-react';
+import { Edit, Trash2, Plus, Eye, PackagePlus, ChevronLeft, ScanBarcodeIcon, ChevronRight, Scan, X, ScanEyeIcon } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -83,9 +83,23 @@ interface BarcodeData {
   scanned_at: string;
 }
 
-export default function ProductsPage() {
-  const { products, categories } = usePage<{ products: PaginatedProducts; categories: { id: number; name: string }[] }>().props;
+interface Unit {
+  id: number;
+  name: string;
+  short_code: string;
+}
 
+interface Category {
+  id: number;
+  name: string;
+}
+
+export default function ProductsPage() {
+  const { products, categories, units } = usePage<{ 
+    products: PaginatedProducts; 
+    categories: Category[];
+    units: Unit[];
+  }>().props;
 
   const [filter, setFilter] = React.useState('');
   const [editingProduct, setEditingProduct] = React.useState<Product | null>(null);
@@ -644,20 +658,35 @@ export default function ProductsPage() {
               />
             </div>
             <div>
-  <label className="text-sm font-medium">Category *</label>
-  <select
-    value={formValues.category_id || ''}
-    onChange={(e) => setFormValues({ ...formValues, category_id: parseInt(e.target.value) })}
-    className="w-full border rounded-md p-2 text-sm"
-  >
-    <option value="">Select Category</option>
-    {categories.map((cat) => (
-      <option key={cat.id} value={cat.id}>
-        {cat.name}
-      </option>
-    ))}
-  </select>
-</div>
+              <label className="text-sm font-medium">Category *</label>
+              <select
+                value={formValues.category_id || ''}
+                onChange={(e) => setFormValues({ ...formValues, category_id: parseInt(e.target.value) })}
+                className="w-full border rounded-md p-2 text-sm"
+              >
+                <option value="">Select Category</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Unit *</label>
+              <select
+                value={formValues.unit_id || ''}
+                onChange={(e) => setFormValues({ ...formValues, unit_id: parseInt(e.target.value) })}
+                className="w-full border rounded-md p-2 text-sm"
+              >
+                <option value="">Select Unit</option>
+                {units.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name} ({unit.short_code})
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="text-sm font-medium">Quantity *</label>
               <Input

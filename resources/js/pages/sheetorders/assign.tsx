@@ -5,11 +5,12 @@ import { Head, usePage, router } from '@inertiajs/react';
 import { type BreadcrumbItem } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { FilterIcon, RefreshCwIcon, ChevronsUpDown, Check, UserCheck } from "lucide-react";
+import { FilterIcon, RefreshCwIcon, ChevronsUpDown, Check, UserCheck, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Pagination,
   PaginationContent,
@@ -69,11 +70,12 @@ interface SheetOrder {
 
 export default function Index() {
   const { props } = usePage();
-  const { orders, filters, merchantUsers, ccUsers, auth } = props as unknown as {
+  const { orders, filters, merchantUsers, ccUsers, productNames, auth } = props as unknown as {
     orders: { data: SheetOrder[], links: any[] };
     filters: Record<string, string>;
     merchantUsers: string[];
     ccUsers: string[];
+    productNames: string[];
     auth: { user: { name: string; roles: string } };
   };
   const hiddenRoles = ["callcenter1", "merchant", "operations"];
@@ -88,8 +90,9 @@ export default function Index() {
   const [merchantOpen, setMerchantOpen] = React.useState(false);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [ccOpen, setCcOpen] = React.useState(false);
+  const [productOpen, setProductOpen] = React.useState(false);
   const [reassignCcOpen, setReassignCcOpen] = React.useState(false);
-  const [selectedCcAgent, setSelectedCcAgent] = React.useState<string>("");
+  const [selectedCcAgents, setSelectedCcAgents] = React.useState<string[]>([]);
   const [localFilters, setLocalFilters] = React.useState<Record<string, string>>(filters || {});
   const [selectedOrders, setSelectedOrders] = React.useState<number[]>([]);
   const allSelected = orders.data.length > 0 && selectedOrders.length === orders.data.length;
@@ -136,36 +139,65 @@ export default function Index() {
     setReassignDialogOpen(true);
   };
 
+  const toggleCcAgent = (agent: string) => {
+    setSelectedCcAgents(prev => {
+      if (prev.includes(agent)) {
+        return prev.filter(a => a !== agent);
+      } else {
+        return [...prev, agent];
+      }
+    });
+  };
+
+  const removeCcAgent = (agent: string) => {
+    setSelectedCcAgents(prev => prev.filter(a => a !== agent));
+  };
+
   const confirmReassign = () => {
-    if (!selectedCcAgent) {
+    if (selectedCcAgents.length === 0) {
       setResultMessage({
-        title: "No CC agent selected",
-        description: "Please select a call center agent",
+        title: "No CC agents selected",
+        description: "Please select at least one call center agent",
         type: "error"
       });
       setResultDialogOpen(true);
       return;
     }
 
+    console.log('Sending reassign request:', {
+      order_ids: selectedOrders,
+      cc_emails: selectedCcAgents
+    });
+
     router.post('/assign/reassign', {
       order_ids: selectedOrders,
-      cc_email: selectedCcAgent
+      cc_emails: selectedCcAgents
     }, {
-      onSuccess: () => {
+      onSuccess: (page) => {
+        console.log('Reassign success:', page);
+        const agentText = selectedCcAgents.length === 1
+          ? selectedCcAgents[0]
+          : `${selectedCcAgents.length} agents (round-robin)`;
         setResultMessage({
           title: "Success",
-          description: `Successfully reassigned ${selectedOrders.length} order(s) to ${selectedCcAgent}`,
+          description: `Successfully reassigned ${selectedOrders.length} order(s) to ${agentText}`,
           type: "success"
         });
         setReassignDialogOpen(false);
         setResultDialogOpen(true);
         setSelectedOrders([]);
-        setSelectedCcAgent("");
+        setSelectedCcAgents([]);
+
+        // Refresh the page to show updated data
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       },
       onError: (errors) => {
+        console.error('Reassign error:', errors);
         setResultMessage({
           title: "Error",
-          description: "Failed to reassign orders. Please try again.",
+          description: errors.message || "Failed to reassign orders. Please try again.",
           type: "error"
         });
         setReassignDialogOpen(false);
@@ -253,9 +285,8 @@ export default function Index() {
                       return (
                         <TableCell
                           key={col}
-                          className={`w-[10%] truncate ${
-                            col === "status" ? statusColors[value] || "" : ""
-                          }`}
+                          className={`w-[10%] truncate ${col === "status" ? statusColors[value] || "" : ""
+                            }`}
                         >
                           {value}
                         </TableCell>
@@ -312,20 +343,42 @@ export default function Index() {
       <Dialog open={reassignDialogOpen} onOpenChange={setReassignDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Reassign Orders</DialogTitle>
+            <DialogTitle>Reassign Orders (Round-Robin)</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 mt-4">
             <p className="text-sm text-muted-foreground">
-              You are about to reassign {selectedOrders.length} order(s) to a different call center agent.
+              You are about to reassign {selectedOrders.length} order(s).
+              {selectedCcAgents.length > 1 && " Orders will be distributed evenly using round-robin."}
             </p>
 
             <div className="flex flex-col space-y-2">
-              <label className="text-sm font-medium">Select Call Center Agent</label>
+              <label className="text-sm font-medium">
+                Select Call Center Agents (Multi-select)
+              </label>
+
+              {selectedCcAgents.length > 0 && (
+                <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/20">
+                  {selectedCcAgents.map((agent) => (
+                    <Badge key={agent} variant="secondary" className="pl-2 pr-1">
+                      {agent}
+                      <button
+                        onClick={() => removeCcAgent(agent)}
+                        className="ml-1 hover:bg-muted rounded-full p-0.5"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
               <Popover open={reassignCcOpen} onOpenChange={setReassignCcOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" role="combobox" className="w-full justify-between">
-                    {selectedCcAgent || "Select Call Center Agent"}
+                    {selectedCcAgents.length === 0
+                      ? "Select Call Center Agents"
+                      : `${selectedCcAgents.length} agent(s) selected`}
                     <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50 shrink-0" />
                   </Button>
                 </PopoverTrigger>
@@ -338,18 +391,15 @@ export default function Index() {
                           <CommandItem
                             key={idx}
                             value={cc}
-                            onSelect={() => {
-                              setSelectedCcAgent(cc);
-                              setReassignCcOpen(false);
-                            }}
+                            onSelect={() => toggleCcAgent(cc)}
                           >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedCcAgent === cc ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            {cc}
+                            <div className="flex items-center w-full">
+                              <Checkbox
+                                checked={selectedCcAgents.includes(cc)}
+                                className="mr-2"
+                              />
+                              {cc}
+                            </div>
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -357,6 +407,12 @@ export default function Index() {
                   </Command>
                 </PopoverContent>
               </Popover>
+
+              {selectedCcAgents.length > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  💡 Orders will be distributed evenly across {selectedCcAgents.length} agents
+                </p>
+              )}
             </div>
           </div>
 
@@ -410,6 +466,45 @@ export default function Index() {
                                 )}
                               />
                               {merchant}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="flex flex-col space-y-2">
+                <label className="text-sm font-medium">Product Name</label>
+                <Popover open={productOpen} onOpenChange={setProductOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" className="w-full justify-between">
+                      {localFilters.product_name || "Select Product"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50 shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 w-[250px]">
+                    <Command>
+                      <CommandInput placeholder="Search product..." />
+                      <CommandList>
+                        <CommandGroup>
+                          {productNames.map((product, idx) => (
+                            <CommandItem
+                              key={idx}
+                              value={product}
+                              onSelect={() => {
+                                setLocalFilters(prev => ({ ...prev, product_name: product }));
+                                setProductOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  localFilters.product_name === product ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {product}
                             </CommandItem>
                           ))}
                         </CommandGroup>
