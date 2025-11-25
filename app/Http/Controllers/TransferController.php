@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Transfer;
 use App\Models\Product;
 use App\Models\User;
+use App\Models\Deduction;
 use Illuminate\Support\Facades\Log;
 
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ class TransferController extends Controller
 {
     public function index(Request $request)
     {
-        $view = $request->get('view', 'grouped'); // 'grouped' or 'detailed'
+        $view = $request->get('view', 'grouped');
 
         if ($view === 'grouped') {
             return $this->groupedView($request);
@@ -38,7 +39,6 @@ class TransferController extends Controller
             ->with(['product:id,name,unit_id', 'agent:id,name'])
             ->groupBy('product_id', 'agent_id');
 
-        // Apply filters
         if ($request->product_id) {
             $query->where('product_id', $request->product_id);
         }
@@ -71,7 +71,6 @@ class TransferController extends Controller
     {
         $query = Transfer::with(['product', 'agent']);
 
-        // Apply filters
         if ($request->product_id) {
             $query->where('product_id', $request->product_id);
         }
@@ -104,19 +103,39 @@ class TransferController extends Controller
     {
         $query = Transfer::where('product_id', $productId)
             ->where('agent_id', $agentId)
-            ->with(['product', 'agent', 'unit']); // Add 'unit' here
+            ->with(['product', 'agent', 'unit']);
     
-        // Apply optional date filter
         if ($request->date) {
             $query->whereDate('created_at', $request->date);
         }
     
         $transfers = $query->latest()->paginate(20);
+        
+        // Get deductions for this product-agent combination
+        $deductions = Deduction::where('product_id', $productId)
+            ->where('agent_id', $agentId)
+            ->latest()
+            ->get();
+        
+        // Calculate totals
+        $totalTransferred = Transfer::where('product_id', $productId)
+            ->where('agent_id', $agentId)
+            ->sum('quantity');
+            
+        $totalDeducted = Deduction::where('product_id', $productId)
+            ->where('agent_id', $agentId)
+            ->sum('quantity');
+            
+        $remainingQuantity = $totalTransferred - $totalDeducted;
        
         return inertia('products/transferdetails', [
             'transfers' => $transfers,
+            'deductions' => $deductions,
             'productId' => $productId,
             'agentId' => $agentId,
+            'totalTransferred' => $totalTransferred,
+            'totalDeducted' => $totalDeducted,
+            'remainingQuantity' => $remainingQuantity,
         ]);
     }
 
@@ -150,5 +169,51 @@ class TransferController extends Controller
         });
 
         return redirect()->back()->with('success', 'Transfers created successfully!');
+    }
+    
+    public function storeDeduction(Request $request, $productId, $agentId)
+    {
+        $validated = $request->validate([
+            'code' => 'required|string|unique:deductions,code',
+            'quantity' => 'required|integer|min:1',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        // Calculate current remaining quantity
+        $totalTransferred = Transfer::where('product_id', $productId)
+            ->where('agent_id', $agentId)
+            ->sum('quantity');
+            
+        $totalDeducted = Deduction::where('product_id', $productId)
+            ->where('agent_id', $agentId)
+            ->sum('quantity');
+            
+        $remainingQuantity = $totalTransferred - $totalDeducted;
+        
+        // Check if deduction quantity exceeds remaining quantity
+        if ($validated['quantity'] > $remainingQuantity) {
+            return redirect()->back()->withErrors([
+                'quantity' => 'Deduction quantity cannot exceed remaining quantity (' . $remainingQuantity . ' units)'
+            ]);
+        }
+
+        Deduction::create([
+            'code' => $validated['code'],
+            'product_id' => $productId,
+            'agent_id' => $agentId,
+            'quantity' => $validated['quantity'],
+            'reason' => $validated['reason'],
+            'deducted_by' => auth()->user()->name ?? 'System',
+        ]);
+
+        return redirect()->back()->with('success', 'Deduction recorded successfully!');
+    }
+    
+    public function destroyDeduction($id)
+    {
+        $deduction = Deduction::findOrFail($id);
+        $deduction->delete();
+        
+        return redirect()->back()->with('success', 'Deduction deleted successfully!');
     }
 }

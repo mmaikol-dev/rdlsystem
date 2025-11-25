@@ -137,7 +137,8 @@ Route::get('/stats', [StatsController::class, 'index'])->name('stats.index');
 Route::post('/transfers', [TransferController::class, 'store'])->name('transfers.store');
 
 Route::get('/transfers/{productId}/{agentId}', [TransferController::class, 'show'])->name('transfers.show');
-
+Route::post('/transfers/{productId}/{agentId}/deductions', [TransferController::class, 'storeDeduction'])->name('transfers.deductions.store');
+Route::delete('/deductions/{id}', [TransferController::class, 'destroyDeduction'])->name('deductions.destroy');
 
 //Warehouse Dashboard
 
