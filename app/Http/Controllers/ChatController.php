@@ -33,63 +33,67 @@ class ChatController extends Controller
     }
 
     public function index(Request $request)
-    {
-        $perPage = $request->get('per_page', 15); // Default 15 conversations per page
-        $currentPage = $request->get('page', 1);
-    
-        // Get all chats to maintain grouping functionality
-        $rawChats = Chat::orderBy('created_at', 'asc')->get();
-    
-        $groupedChats = [];
-    
-        foreach ($rawChats as $chat) {
-            $normalized = $this->normalizePhoneNumber($chat->to);
-    
-            if (!isset($groupedChats[$normalized])) {
-                $groupedChats[$normalized] = [
-                    'phone' => $normalized,
-                    'client_name' => $chat->client_name,
-                    'store_name' => $chat->store_name,
-                    'messages' => [],
-                    'latest_at' => null,
-                ];
-            }
-    
-            $groupedChats[$normalized]['messages'][] = $chat;
-    
-            // Track the latest timestamp for sorting
-            $groupedChats[$normalized]['latest_at'] = $chat->created_at;
+{
+    $perPage = $request->get('per_page', 50);
+    $currentPage = $request->get('page', 1);
+
+    // Get all chats to maintain grouping functionality
+    $rawChats = Chat::orderBy('created_at', 'asc')->get();
+
+    $groupedChats = [];
+
+    foreach ($rawChats as $chat) {
+        $normalized = $this->normalizePhoneNumber($chat->to);
+
+        if (!isset($groupedChats[$normalized])) {
+            $groupedChats[$normalized] = [
+                'phone' => $normalized,
+                'client_name' => $chat->client_name,
+                'store_name' => $chat->store_name,
+                'cc_agents' => $chat->cc_agents, // 👈 Add cc_agents here
+                'messages' => [],
+                'latest_at' => null,
+            ];
         }
-    
-        // Sort conversations by latest_at (newest first)
-        $sortedConversations = collect($groupedChats)
-            ->sortByDesc('latest_at')
-            ->values();
-    
-        // Manual pagination for the conversations
-        $total = $sortedConversations->count();
-        $offset = ($currentPage - 1) * $perPage;
+
+        $groupedChats[$normalized]['messages'][] = $chat;
+        $groupedChats[$normalized]['latest_at'] = $chat->created_at;
         
-        $paginatedConversations = $sortedConversations->slice($offset, $perPage)->values();
+        // 👇 Update cc_agents if it's not set yet
+        if (empty($groupedChats[$normalized]['cc_agents']) && !empty($chat->cc_agents)) {
+            $groupedChats[$normalized]['cc_agents'] = $chat->cc_agents;
+        }
+    }
+
+    // Sort conversations by latest_at (newest first)
+    $sortedConversations = collect($groupedChats)
+        ->sortByDesc('latest_at')
+        ->values();
+
+    // Manual pagination for the conversations
+    $total = $sortedConversations->count();
+    $offset = ($currentPage - 1) * $perPage;
     
-        // Create pagination metadata
-        $pagination = [
-            'current_page' => (int) $currentPage,
-            'per_page' => (int) $perPage,
-            'total' => $total,
-            'last_page' => ceil($total / $perPage),
-            'from' => $total > 0 ? $offset + 1 : 0,
-            'to' => min($offset + $perPage, $total),
-            'has_more_pages' => $currentPage < ceil($total / $perPage),
-            'prev_page_url' => $currentPage > 1 ? request()->fullUrlWithQuery(['page' => $currentPage - 1]) : null,
-            'next_page_url' => $currentPage < ceil($total / $perPage) ? request()->fullUrlWithQuery(['page' => $currentPage + 1]) : null,
-        ];
-    
-        return Inertia::render('whatsapp/index', [
-            'conversations' => $paginatedConversations->toArray(),
-            'pagination' => $pagination,
-        ]);
-    } 
+    $paginatedConversations = $sortedConversations->slice($offset, $perPage)->values();
+
+    // Create pagination metadata
+    $pagination = [
+        'current_page' => (int) $currentPage,
+        'per_page' => (int) $perPage,
+        'total' => $total,
+        'last_page' => ceil($total / $perPage),
+        'from' => $total > 0 ? $offset + 1 : 0,
+        'to' => min($offset + $perPage, $total),
+        'has_more_pages' => $currentPage < ceil($total / $perPage),
+        'prev_page_url' => $currentPage > 1 ? request()->fullUrlWithQuery(['page' => $currentPage - 1]) : null,
+        'next_page_url' => $currentPage < ceil($total / $perPage) ? request()->fullUrlWithQuery(['page' => $currentPage + 1]) : null,
+    ];
+
+    return Inertia::render('whatsapp/index', [
+        'conversations' => $paginatedConversations->toArray(),
+        'pagination' => $pagination,
+    ]);
+}
     
     
     public function getConversations(Request $request)

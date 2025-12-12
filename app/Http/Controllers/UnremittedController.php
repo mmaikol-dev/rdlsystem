@@ -6,8 +6,6 @@ use App\Models\SheetOrder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
-
-
 class UnremittedController extends Controller
 {
     /**
@@ -20,37 +18,59 @@ class UnremittedController extends Controller
             ->where('status', 'delivered')
             ->where(function ($q) {
                 $q->whereNull('agent')
-                  ->orWhere('agent', '');
+                    ->orWhere('agent', '');
             });
-    
-        // ✅ Filter by merchant
+
+        // -------------------------
+        // ✅ Merchant Filter
+        // -------------------------
         if ($request->filled('merchant')) {
             $query->where('merchant', $request->merchant);
         }
-    
-        // ✅ Filter by delivery date
-        if ($request->filled('delivery_date')) {
-            $query->whereDate('delivery_date', $request->delivery_date);
+
+        // -------------------------
+        // ✅ Delivery Date Range Filter
+        // from_date = start date
+        // to_date   = end date
+        // -------------------------
+        if ($request->filled('from_date') && $request->filled('to_date')) {
+            // Range: both start + end
+            $query->whereBetween('delivery_date', [
+                $request->from_date,
+                $request->to_date,
+            ]);
+        } elseif ($request->filled('from_date')) {
+            // Only start date
+            $query->whereDate('delivery_date', '>=', $request->from_date);
+        } elseif ($request->filled('to_date')) {
+            // Only end date
+            $query->whereDate('delivery_date', '<=', $request->to_date);
         }
-    
+
+        // -------------------------
+        //  Pagination
+        // -------------------------
         $orders = $query->orderByDesc('updated_at')
             ->paginate(100)
-            ->withQueryString(); // ✅ keep filters in query string
-    
-        // ✅ Get merchant list for dropdown
+            ->withQueryString();
+
+        // -------------------------
+        //  Merchant List For Filter
+        // -------------------------
         $merchantUsers = SheetOrder::whereNotNull('merchant')
             ->distinct()
             ->pluck('merchant');
-    
+
         return Inertia::render('unremitted/index', [
             'orders' => $orders,
             'merchantUsers' => $merchantUsers,
-            'filters' => $request->only(['merchant', 'delivery_date']), // ✅ removed status since it's fixed to delivered
+            'filters' => $request->only([
+                'merchant',
+                'from_date',
+                'to_date',
+            ]),
         ]);
     }
-    
-    
-
 
     /**
      * Show the form for creating a new resource.

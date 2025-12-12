@@ -4,11 +4,11 @@ import AppLayout from "@/layouts/app-layout";
 import { Head, usePage } from "@inertiajs/react";
 import { useState, useRef, useEffect } from "react";
 import { type BreadcrumbItem } from "@/types";
-import { 
-  Check, 
-  CheckCheck, 
-  Send, 
-  Search, 
+import {
+  Check,
+  CheckCheck,
+  Send,
+  Search,
   MoreVertical,
   Phone,
   Video,
@@ -37,6 +37,7 @@ interface Chat {
   to: string;
   client_name: string;
   store_name: string;
+  cc_agents?: string; // 👈 Added cc_agents field
   status: string; // sent | delivered | read
   sid: string;
   message: string;
@@ -49,6 +50,7 @@ interface Conversation {
   phone: string;
   client_name: string;
   store_name: string;
+  cc_agents?: string; // 👈 Added cc_agents field
   messages: Chat[];
   latest_at: string;
 }
@@ -97,10 +99,8 @@ export default function WhatsAppPage() {
         return <CheckCheck className="w-3 h-3 text-muted-foreground" />;
       case "read":
         return <CheckCheck className="w-3 h-3 text-blue-500" />;
-        case "read":
-        return <CheckCheck className="w-3 h-3 text-red-500" />;
       case "failed":
-        return <Clock className="w-3 h-3 text-red-500" />;
+        return <Clock className="w-3 h-3 text-muted-foreground animate-pulse" />;
       default:
         return null;
     }
@@ -117,19 +117,19 @@ export default function WhatsAppPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
+
     if (diffInHours < 24) {
-      return date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
+      return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: false 
+        hour12: false
       });
     } else if (diffInHours < 168) { // 7 days
       return date.toLocaleDateString('en-US', { weekday: 'short' });
     } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
       });
     }
   };
@@ -142,6 +142,7 @@ export default function WhatsAppPage() {
       to: selected.phone,
       client_name: selected.client_name,
       store_name: selected.store_name,
+      cc_agents: selected.cc_agents, // 👈 Include cc_agents
       status: "pending",
       sid: "",
       message: message.trim(),
@@ -151,18 +152,18 @@ export default function WhatsAppPage() {
     };
 
     // Update conversations with the new message (optimistic update)
-    setConversations(prevConversations => 
-      prevConversations.map(conv => 
-        conv.phone === selected.phone 
+    setConversations(prevConversations =>
+      prevConversations.map(conv =>
+        conv.phone === selected.phone
           ? {
-              ...conv,
-              messages: [...conv.messages, newMsg],
-              latest_at: newMsg.created_at,
-            }
+            ...conv,
+            messages: [...conv.messages, newMsg],
+            latest_at: newMsg.created_at,
+          }
           : conv
       )
     );
-    
+
     setMessage("");
 
     try {
@@ -180,28 +181,28 @@ export default function WhatsAppPage() {
       if (res.ok && data.success) {
         setShowModal(true);
         // Update message status to sent
-        setConversations(prevConversations => 
-          prevConversations.map(conv => 
-            conv.phone === selected.phone 
+        setConversations(prevConversations =>
+          prevConversations.map(conv =>
+            conv.phone === selected.phone
               ? {
-                  ...conv,
-                  messages: conv.messages.map(msg => 
-                    msg.id === newMsg.id ? { ...msg, status: "sent", sid: data.sid || "" } : msg
-                  )
-                }
+                ...conv,
+                messages: conv.messages.map(msg =>
+                  msg.id === newMsg.id ? { ...msg, status: "sent", sid: data.sid || "" } : msg
+                )
+              }
               : conv
           )
         );
       } else {
         alert("Failed to send message.");
         // Rollback optimistic update
-        setConversations(prevConversations => 
-          prevConversations.map(conv => 
-            conv.phone === selected.phone 
+        setConversations(prevConversations =>
+          prevConversations.map(conv =>
+            conv.phone === selected.phone
               ? {
-                  ...conv,
-                  messages: conv.messages.filter(msg => msg.id !== newMsg.id)
-                }
+                ...conv,
+                messages: conv.messages.filter(msg => msg.id !== newMsg.id)
+              }
               : conv
           )
         );
@@ -210,13 +211,13 @@ export default function WhatsAppPage() {
       console.error(err);
       alert("An error occurred while sending the message.");
       // Rollback optimistic update
-      setConversations(prevConversations => 
-        prevConversations.map(conv => 
-          conv.phone === selected.phone 
+      setConversations(prevConversations =>
+        prevConversations.map(conv =>
+          conv.phone === selected.phone
             ? {
-                ...conv,
-                messages: conv.messages.filter(msg => msg.id !== newMsg.id)
-              }
+              ...conv,
+              messages: conv.messages.filter(msg => msg.id !== newMsg.id)
+            }
             : conv
         )
       );
@@ -224,7 +225,7 @@ export default function WhatsAppPage() {
   };
 
   const getUnreadCount = (conversation: Conversation) => {
-    return conversation.messages.filter(msg => 
+    return conversation.messages.filter(msg =>
       !["sent", "delivered", "read", "pending"].includes(msg.status)
     ).length;
   };
@@ -267,7 +268,7 @@ export default function WhatsAppPage() {
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </div>
-            
+
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -296,7 +297,7 @@ export default function WhatsAppPage() {
                   const lastMsg = conv.messages[conv.messages.length - 1];
                   const unreadCount = getUnreadCount(conv);
                   const isSelected = selected?.phone === conv.phone;
-                  
+
                   return (
                     <div
                       key={idx}
@@ -312,7 +313,7 @@ export default function WhatsAppPage() {
                             {getInitials(conv.client_name, conv.phone)}
                           </AvatarFallback>
                         </Avatar>
-                        
+
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2">
@@ -334,16 +335,17 @@ export default function WhatsAppPage() {
                               )}
                             </div>
                           </div>
-                          
+
                           <div className="flex items-center gap-1">
                             <p className="text-sm text-muted-foreground truncate flex-1">
                               {lastMsg?.message}
                             </p>
                             {lastMsg && renderStatusIcon(lastMsg.status)}
                           </div>
-                          
+
+                          {/* 👇 Changed to show cc_agents instead of store_name */}
                           <p className="text-xs text-muted-foreground mt-1">
-                            {conv.store_name}
+                            {conv.cc_agents || 'No agent assigned'}
                           </p>
                         </div>
                       </div>
@@ -372,12 +374,13 @@ export default function WhatsAppPage() {
                       <h3 className="font-medium">
                         {selected.client_name || selected.phone}
                       </h3>
+                      {/* 👇 Changed to show cc_agents instead of store_name */}
                       <p className="text-sm text-muted-foreground">
-                        {selected.phone} • {selected.store_name}
+                        {selected.phone} • {selected.cc_agents || 'No agent'}
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" size="sm">
                       <Phone className="w-4 h-4" />
@@ -397,9 +400,9 @@ export default function WhatsAppPage() {
                 <div className="space-y-4">
                   {selected.messages.map((msg, index) => {
                     const isOutgoing = ["sent", "delivered", "read", "pending"].includes(msg.status);
-                    const showTimestamp = index === 0 || 
+                    const showTimestamp = index === 0 ||
                       new Date(msg.created_at).getDate() !== new Date(selected.messages[index - 1].created_at).getDate();
-                    
+
                     return (
                       <div key={msg.id}>
                         {showTimestamp && (
@@ -414,7 +417,7 @@ export default function WhatsAppPage() {
                             </span>
                           </div>
                         )}
-                        
+
                         <div
                           className={cn(
                             "flex",
@@ -462,7 +465,7 @@ export default function WhatsAppPage() {
                   <Button variant="ghost" size="sm" className="mb-1">
                     <Paperclip className="w-4 h-4" />
                   </Button>
-                  
+
                   <div className="flex-1 relative">
                     <Input
                       value={message}
@@ -477,15 +480,15 @@ export default function WhatsAppPage() {
                       className="pr-10 min-h-[40px] resize-none rounded-full bg-muted"
                       multiline
                     />
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="absolute right-2 top-1/2 transform -translate-y-1/2"
                     >
                       <Smile className="w-4 h-4" />
                     </Button>
                   </div>
-                  
+
                   <Button
                     onClick={handleSend}
                     disabled={!message.trim()}
@@ -502,7 +505,7 @@ export default function WhatsAppPage() {
               <MessageSquare className="w-16 h-16 mb-4 opacity-50" />
               <h3 className="text-lg font-medium mb-2">Welcome to WhatsApp Business</h3>
               <p className="text-center max-w-md">
-                Select a chat from the sidebar to start messaging your customers. 
+                Select a chat from the sidebar to start messaging your customers.
                 All your conversations are organized and ready for you.
               </p>
             </div>

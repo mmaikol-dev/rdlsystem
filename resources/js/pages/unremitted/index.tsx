@@ -26,6 +26,7 @@ import {
   CommandList,
   CommandInput,
 } from "@/components/ui/command";
+import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 
 const BASE_COLUMNS = [
@@ -71,7 +72,6 @@ export default function Index() {
     auth: { user: { id: number; name: string; roles: string } },
   };
 
-  // ✅ Only add "remit" column if roles !== G.O.D
   const hiddenRoles = ["callcenter1", "merchant", "operations"];
 
   const COLUMNS = hiddenRoles.includes(auth.user.roles)
@@ -113,7 +113,7 @@ export default function Index() {
     router.get('/unremitted', {}, { preserveState: true });
   };
 
-  // ✅ Handle remitting
+  // Remit Handler
   const handleRemit = (orderId: number, checked: boolean) => {
     router.put(`/sheetorders/${orderId}`, { agent: checked ? "Remitted" : "" }, {
       preserveState: true,
@@ -174,9 +174,8 @@ export default function Index() {
                     return (
                       <TableCell
                         key={col}
-                        className={`w-[10%] truncate ${
-                          col === "status" ? statusColors[value] || "" : ""
-                        }`}
+                        className={`w-[10%] truncate ${col === "status" ? statusColors[value] || "" : ""
+                          }`}
                       >
                         {value}
                       </TableCell>
@@ -208,7 +207,7 @@ export default function Index() {
         </Pagination>
       </div>
 
-      {/* ✅ Filter Dialog */}
+      {/* Filter Dialog */}
       {filterDialogOpen && (
         <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
           <DialogContent className="max-w-lg">
@@ -217,7 +216,8 @@ export default function Index() {
             </DialogHeader>
 
             <div className="space-y-4 mt-4">
-              {/* Merchant Filter (Popover + Command) */}
+
+              {/* Merchant Filter */}
               <div className="flex flex-col space-y-2">
                 <label className="text-sm font-medium">Merchant</label>
                 <Popover open={merchantOpen} onOpenChange={setMerchantOpen}>
@@ -272,29 +272,59 @@ export default function Index() {
                 </Popover>
               </div>
 
-              {/* Delivery Date Filter */}
+              {/* Delivery Date Range Filter */}
               <div className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">Delivery Date</label>
-                <Input
-                  type="date"
-                  value={filters.delivery_date || ""}
-                  onChange={(e) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      delivery_date: e.target.value,
-                    }))
-                  }
-                />
+                <label className="text-sm font-medium">Delivery Date Range</label>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateRange?.from && "text-muted-foreground"
+                      )}
+                    >
+                      {dateRange?.from ? (
+                        dateRange.to ? (
+                          <>
+                            {format(dateRange.from, "yyyy-MM-dd")} –{" "}
+                            {format(dateRange.to, "yyyy-MM-dd")}
+                          </>
+                        ) : (
+                          format(dateRange.from, "yyyy-MM-dd")
+                        )
+                      ) : (
+                        "Select date range"
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+
+                  <PopoverContent
+                    className="p-0 w-[610px] md:w-[650px] shadow-lg border bg-popover"
+                    side="bottom"
+                    align="start"
+                  >
+                    <Calendar
+                      mode="range"
+                      numberOfMonths={2}
+                      selected={dateRange}
+                      onSelect={setDateRange}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
+
             </div>
 
-            {/* Action Buttons */}
+            {/* Actions */}
             <div className="flex justify-end gap-2 mt-6">
               <Button variant="outline" onClick={clearFilters}>
                 Clear
               </Button>
               <Button onClick={applyFilters}>Apply</Button>
             </div>
+
           </DialogContent>
         </Dialog>
       )}

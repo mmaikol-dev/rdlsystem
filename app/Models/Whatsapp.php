@@ -15,6 +15,7 @@ class Whatsapp extends Model
         'to',
         'client_name',
         'store_name',
+        'cc_agents',
         'message',
         'status',
         'sid',

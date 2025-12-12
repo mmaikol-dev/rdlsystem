@@ -95,8 +95,8 @@ interface Category {
 }
 
 export default function ProductsPage() {
-  const { products, categories, units } = usePage<{ 
-    products: PaginatedProducts; 
+  const { products, categories, units } = usePage<{
+    products: PaginatedProducts;
     categories: Category[];
     units: Unit[];
   }>().props;
@@ -292,7 +292,7 @@ export default function ProductsPage() {
     try {
       const response = await fetch(`/products/${product.id}/barcode-history`);
       const data = await response.json();
-      
+
       if (data.success) {
         setBarcodeHistory(data.barcodes);
         setSelectedProduct(product);
@@ -316,7 +316,7 @@ export default function ProductsPage() {
             onChange={(e) => setFilter(e.target.value)}
             className="flex-1"
           />
-          {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
+          {!["operations", "finance", "callcenter1", ""].includes(usePage().props.auth.user.roles) && (
             <Button
               variant="default"
               className="flex items-center gap-2"
@@ -365,11 +365,11 @@ export default function ProductsPage() {
                   ))}
                 </CardContent>
                 <div className="flex gap-2 justify-end p-2 flex-wrap">
-                  {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
+                  {!["operations", "finance", "callcenter1", ""].includes(usePage().props.auth.user.roles) && (
                     <>
-                      <Button 
-                        size="sm" 
-                        variant="default" 
+                      <Button
+                        size="sm"
+                        variant="default"
                         onClick={() => handleStartScanning(product)}
                         title="Scan Barcodes"
                       >
@@ -389,9 +389,9 @@ export default function ProductsPage() {
                   <Button size="sm" variant="secondary" onClick={() => handleViewLogs(product.code)}>
                     <Eye size={16} />
                   </Button>
-                  <Button 
-                    size="sm" 
-                    variant="secondary" 
+                  <Button
+                    size="sm"
+                    variant="secondary"
                     onClick={() => handleViewBarcodeHistory(product)}
                     title="View Barcode History"
                   >
@@ -413,7 +413,7 @@ export default function ProductsPage() {
           >
             <ChevronLeft size={16} /> Previous
           </Button>
-          
+
           <div className="flex gap-1">
             {products.links.slice(1, -1).map((link, index) => (
               <Button
@@ -449,7 +449,7 @@ export default function ProductsPage() {
               Select operation type and scan multiple barcodes. Total scanned: {scannedBarcodes.length}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 mt-4">
             {/* Operation Type Selection */}
             <div>
@@ -508,7 +508,7 @@ export default function ProductsPage() {
                   </Button>
                 )}
               </div>
-              
+
               {scannedBarcodes.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No barcodes scanned yet. Start scanning to add items.
@@ -588,7 +588,7 @@ export default function ProductsPage() {
               Complete history of scanned barcodes for this product
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-2 mt-4">
             {barcodeHistory.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
@@ -608,11 +608,10 @@ export default function ProductsPage() {
                       </div>
                       <div>
                         <p className="text-muted-foreground text-xs">Operation</p>
-                        <p className={`font-medium ${
-                          record.operation_type === 'inbound' 
-                            ? 'text-green-600' 
+                        <p className={`font-medium ${record.operation_type === 'inbound'
+                            ? 'text-green-600'
                             : 'text-red-600'
-                        }`}>
+                          }`}>
                           {record.operation_type === 'inbound' ? '+ Inbound' : '- Outbound'}
                         </p>
                       </div>

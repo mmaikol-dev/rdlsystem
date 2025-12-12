@@ -20,7 +20,7 @@ class SendWhatsAppMessage extends Command
     {
         Log::info('Starting SendWhatsAppMessageMeta command');
 
-        $accessToken = 'EAATOJZAktrZCIBPYF9IkoaVtZAC4gUBeAqdonpFeF2SZA6Gq4IMAiJRMh9f8MM35wn1P2ZCr83e1H0whjX7ZCUiz04ZAuuuSTF7WJhr1WPOE0SXSqEvTqZApdtjeWLjEOIZBA3kiNnH8LMDLE1Nu1ZBpJbwAn9EU5aic6FXL3aZBkTYZAX9HTbWNStHKR2APBbDu'; // 🔒 Hardcoded Meta access token
+        $accessToken = 'EAAaqkTmPlPQBQF4WKYtr80qPkjrD2uj4zLwqGxTOznoXfwenforoZC3BOX4gJB1cPtgCNUr1bOrYoZAFZC7fNPOAEO7q3eiqz1A5Hm666xZAn2pBubYeMExqjxVorQ7nZAlzY2dOcZA9qm32u2Cc0fk195vNoY9oZABMa3b5xrxyWNJDKKtQays1Tl5d7SSEJWOBWnr6GQ0ZBupO'; // 🔒 Hardcoded Meta access token
 
         $today = Carbon::today();
 
@@ -48,7 +48,7 @@ class SendWhatsAppMessage extends Command
                             case 'RDL1':
                                 $templateName = 'delivery_reminder';
                                 $languageCode = 'en';
-                                $phoneNumberId = '631368316726669'; // Replace with actual RDL1 number ID
+                                $phoneNumberId = '825780310626033'; // Replace with actual RDL1 number ID
                                 $messageParams = [
                                     ['type' => 'text', 'text' => $client_name],
                                     ['type' => 'text', 'text' => $product_name],
@@ -59,7 +59,7 @@ class SendWhatsAppMessage extends Command
                             case 'RDL2':
                                 $templateName = 'delivery_reminder';
                                 $languageCode = 'en';
-                                $phoneNumberId = '631368316726669'; // Replace with actual RDL2 number ID
+                                $phoneNumberId = '825780310626033'; // Replace with actual RDL2 number ID
                                 $messageParams = [
                                     ['type' => 'text', 'text' => $client_name],
                                     ['type' => 'text', 'text' => $order_no],

@@ -6,7 +6,6 @@ use App\Models\SheetOrder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
-
 class UndeliveredController extends Controller
 {
     /**
@@ -18,43 +17,64 @@ class UndeliveredController extends Controller
             ->whereNotNull('code')
             ->where('code', '!=', '')
             ->where('status', '!=', 'delivered');
-    
-        // ✅ Filter by merchant
+
+        // -------------------------
+        // ✅ Merchant Filter
+        // -------------------------
         if ($request->filled('merchant')) {
             $query->where('merchant', $request->merchant);
         }
-    
-        // ✅ Filter by status
+
+        // -------------------------
+        // ✅ Multi-Status Filter
+        // -------------------------
         if ($request->filled('status')) {
             $statuses = is_array($request->status)
                 ? $request->status
                 : explode(',', $request->status);
-    
+
             $query->whereIn('status', $statuses);
         }
-    
-        // ✅ Filter by delivery date
-        if ($request->filled('delivery_date')) {
-            $query->whereDate('delivery_date', $request->delivery_date);
+
+        // -------------------------
+        // ✅ Delivery Date Range Filter
+        // -------------------------
+        if ($request->filled('from_date') && $request->filled('to_date')) {
+            $query->whereBetween('delivery_date', [
+                $request->from_date,
+                $request->to_date,
+            ]);
+        } elseif ($request->filled('from_date')) {
+            $query->whereDate('delivery_date', '>=', $request->from_date);
+        } elseif ($request->filled('to_date')) {
+            $query->whereDate('delivery_date', '<=', $request->to_date);
         }
-    
+
+        // -------------------------
+        //  Pagination
+        // -------------------------
         $orders = $query->orderByDesc('updated_at')
             ->paginate(100)
-            ->withQueryString(); // ✅ keep filters in query string
-    
-        // ✅ Get merchant list for dropdown
+            ->withQueryString();
+
+        // -------------------------
+        //  Merchant List
+        // -------------------------
         $merchantUsers = SheetOrder::whereNotNull('merchant')
             ->distinct()
             ->pluck('merchant');
-    
+
         return Inertia::render('undelivered/index', [
             'orders' => $orders,
             'merchantUsers' => $merchantUsers,
-            'filters' => $request->only(['merchant', 'status', 'delivery_date']), // ✅ pass filters to frontend
+            'filters' => $request->only([
+                'merchant',
+                'status',
+                'from_date',
+                'to_date',
+            ]),
         ]);
     }
-    
-
 
     /**
      * Show the form for creating a new resource.
@@ -83,7 +103,7 @@ class UndeliveredController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit( $undelivered)
+    public function edit($undelivered)
     {
         //
     }
@@ -91,7 +111,7 @@ class UndeliveredController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request,$undelivered)
+    public function update(Request $request, $undelivered)
     {
         //
     }
@@ -99,7 +119,7 @@ class UndeliveredController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy( $undelivered)
+    public function destroy($undelivered)
     {
         //
     }
