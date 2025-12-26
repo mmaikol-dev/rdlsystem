@@ -6,14 +6,10 @@ use App\Models\Dispatch;
 use App\Models\SheetOrder;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
-use ZipArchive;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Carbon;
-
-
+use Illuminate\Support\Facades\File;
+use Inertia\Inertia;
 
 class DispatchController extends Controller
 {
@@ -28,35 +24,35 @@ class DispatchController extends Controller
 
         // Build base query
         $ordersQuery = SheetOrder::select([
-                'id',
-                'order_date',
-                'order_no',
-                'amount',
-                'client_name',
-                'address',
-                'phone',
-                'alt_no',
-                'country',
-                'city',
-                'product_name',
-                'quantity',
-                'status',
-                'agent',
-                'delivery_date',
-                'instructions',
-                'cc_email',
-                'merchant',
-                'order_type',
-                'sheet_id',
-                'sheet_name',
-                'created_at',
-                'updated_at',
-                'code',
-                'store_name',
-                'processed',
-            ])
+            'id',
+            'order_date',
+            'order_no',
+            'amount',
+            'client_name',
+            'address',
+            'phone',
+            'alt_no',
+            'country',
+            'city',
+            'product_name',
+            'quantity',
+            'status',
+            'agent',
+            'delivery_date',
+            'instructions',
+            'cc_email',
+            'merchant',
+            'order_type',
+            'sheet_id',
+            'sheet_name',
+            'created_at',
+            'updated_at',
+            'code',
+            'store_name',
+            'processed',
+        ])
             ->whereIn('status', ['scheduled', 'dispatched'])
-            ->orderByRaw("CASE WHEN delivery_date = ? THEN 0 ELSE 1 END", [$today])
+            ->orderByRaw('CASE WHEN delivery_date = ? THEN 0 ELSE 1 END', [$today])
             ->orderBy('delivery_date', 'asc');
 
         // Restrict merchants to their orders only
@@ -68,8 +64,8 @@ class DispatchController extends Controller
         if ($search) {
             $ordersQuery->where(function ($q) use ($search) {
                 $q->where('order_no', 'like', "%{$search}%")
-                  ->orWhere('product_name', 'like', "%{$search}%")
-                  ->orWhere('client_name', 'like', "%{$search}%");
+                    ->orWhere('product_name', 'like', "%{$search}%")
+                    ->orWhere('client_name', 'like', "%{$search}%");
             });
         }
 
@@ -90,6 +86,7 @@ class DispatchController extends Controller
             $order->delivery_date = $order->delivery_date
                 ? Carbon::parse($order->delivery_date)->format('Y-m-d')
                 : null;
+
             return $order;
         })->withQueryString();
 
@@ -115,7 +112,6 @@ class DispatchController extends Controller
         ]);
     }
 
-    
     /**
      * Bulk assign orders to an agent
      */
@@ -144,12 +140,73 @@ class DispatchController extends Controller
 
         $notFound = count($orderNumbers) - $updatedCount;
         $message = "Successfully assigned {$updatedCount} order(s) to {$validated['agent_name']}.";
-        
+
         if ($notFound > 0) {
             $message .= " {$notFound} order(s) not found.";
         }
 
         return redirect()->back()->with('success', $message);
+    }
+
+    public function printAgentOrders(Request $request, $agent)
+    {
+        $user = $request->user();
+
+        $ordersQuery = SheetOrder::select([
+            'id',
+            'order_date',
+            'order_no',
+            'amount',
+            'client_name',
+            'address',
+            'phone',
+            'alt_no',
+            'country',
+            'city',
+            'product_name',
+            'quantity',
+            'status',
+            'agent',
+            'delivery_date',
+            'instructions',
+            'merchant',
+            'created_at',
+        ])
+            ->where('agent', $agent)
+            ->whereIn('status', ['scheduled', 'dispatched'])
+            ->orderBy('delivery_date', 'asc');
+
+        // Restrict merchants to their own orders
+        if ($user->roles === 'merchant') {
+            $ordersQuery->where('merchant', $user->name);
+        }
+
+        $orders = $ordersQuery->get();
+
+        if ($orders->isEmpty()) {
+            return back()->withErrors([
+                'error' => "No orders found for agent: {$agent}",
+            ]);
+        }
+
+        // ❌ REMOVED date mutation (this was causing the Carbon error)
+
+        $pdf = Pdf::loadView('orderspdf', [
+            'orders' => $orders,
+            'agent' => $agent,
+            'printDate' => now()->format('F d, Y g:i A'),
+        ]);
+
+        $pdf->setPaper('a4', 'potrait');
+        $pdf->setOption([
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true,
+            'defaultFont' => 'sans-serif',
+        ]);
+
+        return $pdf->download(
+            "orders_{$agent}_".now()->format('Ymd_His').'.pdf'
+        );
     }
 
     public function generateWaybill(SheetOrder $order)
@@ -164,14 +221,12 @@ class DispatchController extends Controller
         $pdf->setOption([
             'isRemoteEnabled' => true,
             'isHtml5ParserEnabled' => true,
-            'defaultFont' => 'sans-serif'
+            'defaultFont' => 'sans-serif',
         ]);
 
         // Force file download
         return $pdf->download("waybill_{$order->order_no}.pdf");
     }
-
-   
 
     public function bulkDownloadWaybills(Request $request)
     {
@@ -179,32 +234,32 @@ class DispatchController extends Controller
         @ini_set('memory_limit', '512M');
         @ini_set('max_execution_time', 300);
         @ini_set('max_input_time', 300);
-        
+
         $validated = $request->validate([
             'order_numbers' => 'required|string',
         ]);
-    
+
         // Split order numbers (comma, space, or newline)
         $orderNumbers = preg_split('/[\s,\n,]+/', trim($validated['order_numbers']));
         $orderNumbers = array_filter($orderNumbers);
-    
+
         if (empty($orderNumbers)) {
             return back()->withErrors(['order_numbers' => 'Please provide valid order numbers.']);
         }
-    
+
         // Optional: Limit maximum orders to prevent server overload
         if (count($orderNumbers) > 50) {
             return back()->withErrors(['order_numbers' => 'Maximum 50 waybills allowed at once.']);
         }
-    
+
         try {
             // Fetch orders
             $orders = \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)->get();
-    
+
             if ($orders->isEmpty()) {
                 return back()->withErrors(['order_numbers' => 'No matching orders found.']);
             }
-    
+
             // Load one combined view (all waybills together)
             $pdf = Pdf::loadView('waybills', compact('orders'))
                 ->setPaper('a4', 'portrait')
@@ -215,27 +270,28 @@ class DispatchController extends Controller
                     'dpi' => 96,
                     'defaultFont' => 'sans-serif',
                 ]);
-    
+
             // Update all orders to dispatched (more efficient bulk update)
             \App\Models\SheetOrder::whereIn('order_no', $orderNumbers)
                 ->update(['status' => 'Dispatched']);
-    
-            $fileName = 'waybills_' . now()->format('Ymd_His') . '.pdf';
+
+            $fileName = 'waybills_'.now()->format('Ymd_His').'.pdf';
+
             return $pdf->download($fileName);
-            
+
         } catch (\Exception $e) {
             // Log the error for debugging
             \Log::error('Bulk Waybill PDF Generation Failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'order_count' => count($orderNumbers),
-                'orders' => $orderNumbers
+                'orders' => $orderNumbers,
             ]);
-            
+
             return back()->withErrors(['error' => 'Failed to generate PDF. Please try with fewer orders or contact support.']);
         }
     }
-    
+
     public function create()
     {
         //
@@ -262,7 +318,7 @@ class DispatchController extends Controller
     public function update(Request $request, $id)
     {
         $order = SheetOrder::findOrFail($id);
-        
+
         $validated = $request->validate([
             'order_no' => 'sometimes|string',
             'product_name' => 'sometimes|string',

@@ -19,7 +19,9 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Award
+  Award,
+  AlertTriangle,
+  CalendarClock
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -49,6 +51,10 @@ export default function StatsDashboard({
   summary,
   ordersByStatus,
   agentPerformance,
+  overdueScheduled,
+  overdueScheduledSummary,
+  overduePending,
+  overduePendingSummary,
   ordersByMerchant,
   dailyTrend,
   topProducts,
@@ -72,7 +78,7 @@ export default function StatsDashboard({
     router.get('/stats', newFilters, {
       preserveState: true,
       preserveScroll: true,
-      only: ['summary', 'ordersByStatus', 'agentPerformance', 'ordersByMerchant', 'dailyTrend', 'topProducts', 'ordersByCountry', 'ordersByCity', 'recentOrders', 'filters']
+      only: ['summary', 'ordersByStatus', 'agentPerformance', 'overdueScheduled', 'overdueScheduledSummary', 'overduePending', 'overduePendingSummary', 'ordersByMerchant', 'dailyTrend', 'topProducts', 'ordersByCountry', 'ordersByCity', 'recentOrders', 'filters']
     })
   }
 
@@ -284,6 +290,7 @@ export default function StatsDashboard({
           />
         </div>
 
+
         {/* Agent Performance Section */}
         <Card className="border-none shadow-md">
           <CardHeader>
@@ -313,6 +320,12 @@ export default function StatsDashboard({
                       </th>
                       <th className="text-right py-3 px-4 font-semibold">
                         <div className="flex items-center justify-end gap-1">
+                          <CalendarClock className="h-4 w-4 text-blue-600" />
+                          Scheduled
+                        </div>
+                      </th>
+                      <th className="text-right py-3 px-4 font-semibold">
+                        <div className="flex items-center justify-end gap-1">
                           <Clock className="h-4 w-4 text-yellow-600" />
                           Pending
                         </div>
@@ -324,6 +337,7 @@ export default function StatsDashboard({
                         </div>
                       </th>
                       <th className="text-right py-3 px-4 font-semibold">Delivery Rate</th>
+                      <th className="text-right py-3 px-4 font-semibold">Schedule Rate</th>
                       <th className="text-right py-3 px-4 font-semibold">Total Revenue</th>
                       <th className="text-right py-3 px-4 font-semibold">Avg Order</th>
                     </tr>
@@ -339,6 +353,7 @@ export default function StatsDashboard({
                         </td>
                         <td className="py-3 px-4 text-right font-semibold">{agent.total_orders}</td>
                         <td className="py-3 px-4 text-right text-green-600 font-medium">{agent.delivered_orders}</td>
+                        <td className="py-3 px-4 text-right text-blue-600 font-medium">{agent.scheduled_orders}</td>
                         <td className="py-3 px-4 text-right text-yellow-600 font-medium">{agent.pending_orders}</td>
                         <td className="py-3 px-4 text-right text-red-600 font-medium">{agent.cancelled_orders}</td>
                         <td className="py-3 px-4 text-right">
@@ -350,6 +365,17 @@ export default function StatsDashboard({
                               />
                             </div>
                             <span className="font-semibold">{agent.delivery_rate}%</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <div className="w-16 bg-muted rounded-full h-2">
+                              <div
+                                className="h-2 rounded-full bg-blue-500"
+                                style={{ width: `${agent.schedule_rate}%` }}
+                              />
+                            </div>
+                            <span className="font-semibold">{agent.schedule_rate}%</span>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right font-semibold text-green-600">
@@ -364,6 +390,142 @@ export default function StatsDashboard({
                 </table>
               </div>
             )}
+
+            {/* Overdue Alerts Section */}
+            {(overdueScheduledSummary.length > 0 || overduePendingSummary.length > 0) && (
+              <div className="grid lg:grid-cols-2 gap-4">
+                {/* Overdue Scheduled Orders */}
+                {overdueScheduledSummary.length > 0 && (
+                  <Card className="border-red-200 shadow-md bg-red-50/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-red-700">
+                        <AlertTriangle className="h-5 w-5" />
+                        Overdue Scheduled Deliveries
+                      </CardTitle>
+                      <CardDescription>Orders past their scheduled delivery date</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3">
+                        {overdueScheduledSummary.map((agent, idx) => (
+                          <div key={idx} className="bg-white rounded-lg p-4 border border-red-200 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-red-600" />
+                                <span className="font-semibold text-red-900">{agent.cc_email}</span>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <div className="text-2xl font-bold text-red-600">{agent.overdue_count}</div>
+                                  <div className="text-xs text-red-600">overdue orders</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xl font-semibold text-orange-600">{agent.avg_days_overdue}</div>
+                                  <div className="text-xs text-orange-600">avg days late</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Show individual orders for this agent */}
+                            <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                              {overdueScheduled
+                                .filter(order => order.cc_email === agent.cc_email)
+                                .slice(0, 5)
+                                .map((order, orderIdx) => (
+                                  <div key={orderIdx} className="bg-red-50 p-2 rounded text-xs border border-red-100">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <div className="font-medium text-red-900">{order.order_no}</div>
+                                        <div className="text-red-700">{order.client_name}</div>
+                                        <div className="text-red-600 flex items-center gap-1 mt-1">
+                                          <Store className="h-3 w-3" />
+                                          {order.merchant}
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="font-bold text-red-600">{order.days_overdue} days</div>
+                                        <div className="text-red-500 text-[10px]">overdue</div>
+                                        <div className="text-red-500 text-[10px]">
+                                          Due: {new Date(order.delivery_date).toLocaleDateString()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Overdue Pending Orders */}
+                {overduePendingSummary.length > 0 && (
+                  <Card className="border-orange-200 shadow-md bg-orange-50/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-orange-700">
+                        <Clock className="h-5 w-5" />
+                        Long Pending Orders (2+ Days)
+                      </CardTitle>
+                      <CardDescription>Pending orders requiring attention</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3">
+                        {overduePendingSummary.map((agent, idx) => (
+                          <div key={idx} className="bg-white rounded-lg p-4 border border-orange-200 shadow-sm">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <User className="h-4 w-4 text-orange-600" />
+                                <span className="font-semibold text-orange-900">{agent.cc_email}</span>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <div className="text-2xl font-bold text-orange-600">{agent.overdue_count}</div>
+                                  <div className="text-xs text-orange-600">pending orders</div>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xl font-semibold text-yellow-600">{agent.avg_days_pending}</div>
+                                  <div className="text-xs text-yellow-600">avg days</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Show individual orders for this agent */}
+                            <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                              {overduePending
+                                .filter(order => order.cc_email === agent.cc_email)
+                                .slice(0, 5)
+                                .map((order, orderIdx) => (
+                                  <div key={orderIdx} className="bg-orange-50 p-2 rounded text-xs border border-orange-100">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <div className="font-medium text-orange-900">{order.order_no}</div>
+                                        <div className="text-orange-700">{order.client_name}</div>
+                                        <div className="text-orange-600 flex items-center gap-1 mt-1">
+                                          <Store className="h-3 w-3" />
+                                          {order.merchant}
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="font-bold text-orange-600">{order.days_pending} days</div>
+                                        <div className="text-orange-500 text-[10px]">pending</div>
+                                        <div className="text-orange-500 text-[10px]">
+                                          Since: {new Date(order.order_date).toLocaleDateString()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+
           </CardContent>
         </Card>
 
@@ -649,6 +811,7 @@ function StatusBadge({ status }) {
   const styles = {
     Completed: 'bg-green-100 text-green-700 border-green-200',
     Delivered: 'bg-green-100 text-green-700 border-green-200',
+    Scheduled: 'bg-blue-100 text-blue-700 border-blue-200',
     Pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
     Processing: 'bg-blue-100 text-blue-700 border-blue-200',
     Cancelled: 'bg-red-100 text-red-700 border-red-200',

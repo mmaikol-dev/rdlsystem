@@ -1,3 +1,4 @@
+
 "use client";
 
 import AppLayout from "@/layouts/app-layout";
@@ -45,19 +46,20 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Edit, 
-  FileText, 
-  Trash2, 
-  Lock, 
-  Filter, 
-  CalendarIcon, 
-  Users, 
+import {
+  Edit,
+  FileText,
+  Trash2,
+  Lock,
+  Filter,
+  CalendarIcon,
+  Users,
   PackageCheck,
   AlertCircle,
   Loader2,
   CheckCircle2,
-  Download
+  Download,
+  Printer
 } from "lucide-react";
 import * as React from "react";
 import { format } from "date-fns";
@@ -110,14 +112,20 @@ export default function DispatchView() {
   const [showFilterModal, setShowFilterModal] = React.useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = React.useState(false);
   const [showBulkDownloadModal, setShowBulkDownloadModal] = React.useState(false);
+  const [showPrintModal, setShowPrintModal] = React.useState(false);
   const [bulkOrderNumbers, setBulkOrderNumbers] = React.useState("");
   const [bulkDownloadOrderNumbers, setBulkDownloadOrderNumbers] = React.useState("");
   const [bulkSelectedAgent, setBulkSelectedAgent] = React.useState("");
+  const [printAgent, setPrintAgent] = React.useState("");
+  const [printDateRange, setPrintDateRange] = React.useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+  }>({ from: undefined, to: undefined });
   const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
   const [editValues, setEditValues] = React.useState<Partial<SheetOrder>>({});
   const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
   const [showAccessDenied, setShowAccessDenied] = React.useState(false);
-  
+
   // Loading states
   const [isFiltering, setIsFiltering] = React.useState(false);
   const [isBulkAssigning, setIsBulkAssigning] = React.useState(false);
@@ -143,8 +151,8 @@ export default function DispatchView() {
         end_date: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : "",
         agent: selectedAgent === "all" ? "" : selectedAgent,
       },
-      { 
-        preserveState: true, 
+      {
+        preserveState: true,
         replace: true,
         onFinish: () => {
           setIsFiltering(false);
@@ -159,8 +167,8 @@ export default function DispatchView() {
     setDateRange({ from: undefined, to: undefined });
     setSelectedAgent("all");
     setIsFiltering(true);
-    router.get("/dispatch", {}, { 
-      preserveState: true, 
+    router.get("/dispatch", {}, {
+      preserveState: true,
       replace: true,
       onFinish: () => {
         setIsFiltering(false);
@@ -194,39 +202,58 @@ export default function DispatchView() {
     }
 
     setIsBulkDownloading(true);
-    
-    // Create a form and submit it
+
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = '/dispatch/bulk-download-waybills';
-    
-    // Add CSRF token
+
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     const csrfInput = document.createElement('input');
     csrfInput.type = 'hidden';
     csrfInput.name = '_token';
     csrfInput.value = csrfToken || '';
     form.appendChild(csrfInput);
-    
-    // Add order numbers
+
     const orderInput = document.createElement('input');
     orderInput.type = 'hidden';
     orderInput.name = 'order_numbers';
     orderInput.value = bulkDownloadOrderNumbers;
     form.appendChild(orderInput);
-    
+
     document.body.appendChild(form);
     form.submit();
     document.body.removeChild(form);
-    
-    // Reset state after a delay
+
     setTimeout(() => {
       setIsBulkDownloading(false);
       setShowBulkDownloadModal(false);
       setBulkDownloadOrderNumbers("");
-      // Refresh the page to show updated statuses
       router.reload();
     }, 2000);
+  };
+
+  const handlePrintAgentOrders = () => {
+    if (!printAgent) {
+      return;
+    }
+
+    // Build URL with optional date filters
+    let url = `/dispatch/agent-orders/${encodeURIComponent(printAgent)}`;
+    const params = new URLSearchParams();
+
+    if (printDateRange.from) {
+      params.append('start_date', format(printDateRange.from, 'yyyy-MM-dd'));
+    }
+    if (printDateRange.to) {
+      params.append('end_date', format(printDateRange.to, 'yyyy-MM-dd'));
+    }
+
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+
+    window.open(url, '_blank');
+    setShowPrintModal(false);
   };
 
   const handleEditOpen = (order: SheetOrder) => {
@@ -362,7 +389,7 @@ export default function DispatchView() {
                 </CardDescription>
               </div>
               <div className="flex gap-2 w-full sm:w-auto flex-wrap">
-                <Button 
+                <Button
                   onClick={() => setShowBulkAssignModal(true)}
                   className="flex-1 sm:flex-none"
                   disabled={isBulkAssigning}
@@ -379,7 +406,7 @@ export default function DispatchView() {
                     </>
                   )}
                 </Button>
-                <Button 
+                <Button
                   onClick={() => setShowBulkDownloadModal(true)}
                   variant="secondary"
                   className="flex-1 sm:flex-none"
@@ -397,8 +424,16 @@ export default function DispatchView() {
                     </>
                   )}
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  onClick={() => setShowPrintModal(true)}
+                  variant="outline"
+                  className="flex-1 sm:flex-none"
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Print Orders
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => setShowFilterModal(true)}
                   className="relative flex-1 sm:flex-none"
                   disabled={isFiltering}
@@ -441,20 +476,20 @@ export default function DispatchView() {
                   <TableBody>
                     {orders.data.map((order: SheetOrder) => (
                       <TableRow key={order.id} className="hover:bg-muted/30">
-                        <TableCell 
-                          className="font-medium w-[120px] truncate" 
+                        <TableCell
+                          className="font-medium w-[120px] truncate"
                           title={order.order_no}
                         >
                           {order.order_no}
                         </TableCell>
-                        <TableCell 
-                          className="w-[120px] truncate" 
+                        <TableCell
+                          className="w-[120px] truncate"
                           title={order.client_name}
                         >
                           {order.client_name}
                         </TableCell>
-                        <TableCell 
-                          className="w-[120px] truncate" 
+                        <TableCell
+                          className="w-[120px] truncate"
                           title={order.product_name}
                         >
                           {order.product_name}
@@ -462,14 +497,14 @@ export default function DispatchView() {
                         <TableCell className="text-right w-[80px]">
                           {order.quantity}
                         </TableCell>
-                        <TableCell 
-                          className="text-right w-[100px] truncate font-medium" 
+                        <TableCell
+                          className="text-right w-[100px] truncate font-medium"
                           title={order.amount}
                         >
                           {order.amount}
                         </TableCell>
-                        <TableCell 
-                          className="w-[120px] truncate" 
+                        <TableCell
+                          className="w-[120px] truncate"
                           title={order.phone}
                         >
                           {order.phone}
@@ -508,16 +543,15 @@ export default function DispatchView() {
                             variant={order.status === "scheduled" ? "secondary" : "default"}
                             className={cn(
                               "whitespace-nowrap",
-                              order.status === "scheduled" 
-                                ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200" 
+                              order.status === "scheduled"
+                                ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
                                 : "bg-green-100 text-green-800 hover:bg-green-200"
                             )}
                           >
                             {order.status === "scheduled" ? "⏳ Scheduled" : "✅ Dispatched"}
                           </Badge>
                         </TableCell>
-                       
-                        
+
                         <TableCell className="text-right w-[140px]">
                           <div className="flex gap-1 justify-end">
                             <Button
@@ -605,6 +639,129 @@ export default function DispatchView() {
         )}
       </div>
 
+      {/* Print Agent Orders Modal */}
+      <Dialog open={showPrintModal} onOpenChange={setShowPrintModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Printer className="w-5 h-5" />
+              Print Agent Orders
+            </DialogTitle>
+            <DialogDescription>
+              Select an agent to generate a PDF report of their assigned orders.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="print_agent" className="text-base font-semibold">
+                Select Agent <span className="text-red-500">*</span>
+              </Label>
+              <Select value={printAgent} onValueChange={setPrintAgent}>
+                <SelectTrigger id="print_agent" className="h-11">
+                  <SelectValue placeholder="Choose an agent..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents?.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.name}>
+                      {agent.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Required: Select which agent's orders to print
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-base font-semibold">
+                Delivery Date Range <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full h-11 justify-start text-left font-normal",
+                      !printDateRange.from && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {printDateRange.from ? (
+                      printDateRange.to ? (
+                        <>
+                          {format(printDateRange.from, "LLL dd, y")} -{" "}
+                          {format(printDateRange.to, "LLL dd, y")}
+                        </>
+                      ) : (
+                        format(printDateRange.from, "LLL dd, y")
+                      )
+                    ) : (
+                      <span>Pick a date range</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={printDateRange.from}
+                    selected={printDateRange}
+                    onSelect={(range) => setPrintDateRange(range || { from: undefined, to: undefined })}
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground mt-1">
+                Leave empty to print all orders for the selected agent
+              </p>
+            </div>
+
+            {printAgent && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-blue-900">
+                      Ready to print orders for: <strong>{printAgent}</strong>
+                    </p>
+                    {printDateRange.from && printDateRange.to && (
+                      <p className="text-xs text-blue-700">
+                        Delivery dates: {format(printDateRange.from, "MMM dd")} - {format(printDateRange.to, "MMM dd, yyyy")}
+                      </p>
+                    )}
+                    {(!printDateRange.from || !printDateRange.to) && (
+                      <p className="text-xs text-blue-700">
+                        All orders (no date filter)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowPrintModal(false);
+                setPrintAgent("");
+                setPrintDateRange({ from: undefined, to: undefined });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePrintAgentOrders}
+              disabled={!printAgent}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Generate PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Bulk Download Modal */}
       <Dialog open={showBulkDownloadModal} onOpenChange={setShowBulkDownloadModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -648,8 +805,8 @@ export default function DispatchView() {
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setShowBulkDownloadModal(false);
                 setBulkDownloadOrderNumbers("");
@@ -658,7 +815,7 @@ export default function DispatchView() {
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleBulkDownload}
               disabled={!bulkDownloadOrderNumbers.trim() || parsedDownloadOrders.length === 0 || isBulkDownloading}
             >
@@ -724,8 +881,8 @@ export default function DispatchView() {
               <Label htmlFor="bulk_agent" className="text-base font-semibold">
                 Select Agent
               </Label>
-              <Select 
-                value={bulkSelectedAgent} 
+              <Select
+                value={bulkSelectedAgent}
                 onValueChange={setBulkSelectedAgent}
                 disabled={isBulkAssigning}
               >
@@ -743,8 +900,8 @@ export default function DispatchView() {
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setShowBulkAssignModal(false);
                 setBulkOrderNumbers("");
@@ -754,7 +911,7 @@ export default function DispatchView() {
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleBulkAssign}
               disabled={!bulkOrderNumbers.trim() || !bulkSelectedAgent || parsedOrders.length === 0 || isBulkAssigning}
             >
@@ -844,8 +1001,8 @@ export default function DispatchView() {
               <Label htmlFor="filter_agent" className="mb-2 block">
                 Agent
               </Label>
-              <Select 
-                value={selectedAgent} 
+              <Select
+                value={selectedAgent}
                 onValueChange={setSelectedAgent}
                 disabled={isFiltering}
               >
@@ -864,8 +1021,8 @@ export default function DispatchView() {
             </div>
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={handleClearFilters}
               disabled={isFiltering}
             >
@@ -878,7 +1035,7 @@ export default function DispatchView() {
                 "Clear All"
               )}
             </Button>
-            <Button 
+            <Button
               onClick={handleApplyFilters}
               disabled={isFiltering}
             >
@@ -983,9 +1140,9 @@ export default function DispatchView() {
               <Select
                 value={editValues.agent || "none"}
                 onValueChange={(value) =>
-                  setEditValues({ 
-                    ...editValues, 
-                    agent: value === "none" ? null : value 
+                  setEditValues({
+                    ...editValues,
+                    agent: value === "none" ? null : value
                   })
                 }
                 disabled={isUpdating}
@@ -1046,14 +1203,14 @@ export default function DispatchView() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setEditingOrder(null)}
               disabled={isUpdating}
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={handleEditSave}
               disabled={isUpdating}
             >
@@ -1087,15 +1244,15 @@ export default function DispatchView() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 mt-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => setDeletingOrder(null)}
               disabled={isDeleting}
             >
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleDelete}
               disabled={isDeleting}
             >
