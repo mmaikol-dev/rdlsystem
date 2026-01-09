@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SheetOrder;
 use App\Models\Update;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Inertia\Inertia;
 
 class UpdateController extends Controller
 {
@@ -13,6 +17,20 @@ class UpdateController extends Controller
     public function index()
     {
         //
+        return Inertia::render('updates/index', [
+            'updates' => SheetOrder::whereNotNull('updated_at')->get(),
+
+        ]);
+    }
+
+    public function run(): JsonResponse
+    {
+        Artisan::call('orders:update-sheets');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sheet update command started',
+        ]);
     }
 
     /**

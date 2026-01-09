@@ -10,6 +10,8 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\DispatchController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\UpdateController;
+use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SheetController;
 use App\Http\Controllers\SheetOrderController;
@@ -129,6 +131,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/deductions/{id}', [TransferController::class, 'destroyDeduction'])->name('deductions.destroy');
 
     // Warehouse Dashboard
+
+Route::resource('updates', UpdateController::class);
+Route::resource('voice', VoiceController::class);
+
 
     Route::resource('waredash', WaredashController::class);
 

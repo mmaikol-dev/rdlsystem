@@ -1,6 +1,10 @@
 <?php
 
+
+
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\AppScriptController;
 use App\Http\Controllers\C2BTransactionController;
 use App\Http\Controllers\StkController;
@@ -30,3 +34,22 @@ Route::post('/whatsapp/send-chat', [WhatsappController::class, 'sendChat'])->nam
 
 Route::post('/whatsapp/webhook', [WhatsappController::class, 'webhook']);
 Route::get('/whatsapp/webhook', [WhatsappController::class, 'webhook']);
+
+
+// Default Laravel route (you can keep or remove this)
+Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
+    return $request->user();
+});
+
+// API routes for voice functionality
+Route::prefix('voice')->group(function () {
+    Route::post('/capability-token', [VoiceController::class, 'getCapabilityToken']);
+    Route::post('/make-call', [VoiceController::class, 'makeCall']);
+});
+
+// Africa's Talking callback routes
+Route::prefix('webhooks')->group(function () {
+    Route::post('/voice/callback', [VoiceController::class, 'callCallback']);
+    Route::post('/voice/status', [VoiceController::class, 'callStatus']);
+    Route::post('/voice/incoming', [VoiceController::class, 'incomingCall']);
+});
