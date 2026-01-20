@@ -232,6 +232,19 @@ const TableRowMemo = React.memo(
   }
 );
 
+// Helper function to get current date and time in the desired format
+const getCurrentDateTimePrefix = () => {
+  const now = new Date();
+  const day = now.getDate();
+  const month = now.getMonth() + 1; // Months are 0-indexed
+  const hours = now.getHours();
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  const hour12 = hours % 12 || 12;
+
+  return `${day}/${month} ${hour12}:${minutes}${ampm} - `;
+};
+
 export default function Index() {
   const { props } = usePage();
 
@@ -325,6 +338,25 @@ export default function Index() {
       }
     }
   }, [editing, createModalOpen]);
+
+  // Effect to auto-populate date/time when instructions modal opens
+  React.useEffect(() => {
+    if (editing?.field === 'instructions') {
+      const currentInstructions = editing.order.instructions || '';
+      const dateTimePrefix = getCurrentDateTimePrefix();
+
+      // Only add the date/time prefix if it doesn't already exist at the end
+      // or if the instructions are empty
+      if (!currentInstructions.trim() || !currentInstructions.includes(dateTimePrefix.slice(0, -3))) {
+        // If there's existing text, add a new line before the timestamp
+        const separator = currentInstructions.trim() ? '\n\n' : '';
+        setEditValue(currentInstructions + separator + dateTimePrefix);
+      } else {
+        // If timestamp already exists, just set the existing value
+        setEditValue(currentInstructions);
+      }
+    }
+  }, [editing]);
 
   const toggleListening = () => {
     if (!speechRecognition || !isSpeechSupported) return;
@@ -456,22 +488,53 @@ export default function Index() {
 
   const handleCloseEditModal = React.useCallback(() => {
     if (editing && editValue !== String(editing.order[editing.field] || '')) {
-      router.put(`/sheetorders/${editing.order.id}`, { [editing.field]: editValue }, {
-        preserveState: true,
-        preserveScroll: true,
-        only: ['orders'],
-        onSuccess: () => {
-          const key = `${editing.order.id}-${editing.field}`;
-          setHighlighted(prev => ({ ...prev, [key]: true }));
-          setTimeout(() => {
-            setHighlighted(prev => {
-              const updated = { ...prev };
-              delete updated[key];
-              return updated;
-            });
-          }, 2000);
-        },
-      });
+      // For instructions field, check if user has added text after the dash
+      if (editing.field === 'instructions') {
+        const dateTimePrefix = getCurrentDateTimePrefix();
+
+        // Check if the editValue contains the date/time prefix
+        const prefixIndex = editValue.indexOf(dateTimePrefix);
+
+        if (prefixIndex !== -1) {
+          // Get the text after the dash (including the space after dash)
+          const textAfterDash = editValue.substring(prefixIndex + dateTimePrefix.length);
+
+          // If there's no text after the dash (or only whitespace), don't save
+          if (!textAfterDash.trim()) {
+            console.log('No text added after date/time prefix - not saving');
+            setEditing(null);
+            setEditValue('');
+            return;
+          }
+        }
+        // If there's no date/time prefix, check if there's any content
+        else if (!editValue.trim()) {
+          console.log('Instructions field is empty - not saving');
+          setEditing(null);
+          setEditValue('');
+          return;
+        }
+      }
+
+      // Only save if the value has changed
+      if (editValue !== String(editing.order[editing.field] || '')) {
+        router.put(`/sheetorders/${editing.order.id}`, { [editing.field]: editValue }, {
+          preserveState: true,
+          preserveScroll: true,
+          only: ['orders'],
+          onSuccess: () => {
+            const key = `${editing.order.id}-${editing.field}`;
+            setHighlighted(prev => ({ ...prev, [key]: true }));
+            setTimeout(() => {
+              setHighlighted(prev => {
+                const updated = { ...prev };
+                delete updated[key];
+                return updated;
+              });
+            }, 2000);
+          },
+        });
+      }
     }
     setEditing(null);
     setEditValue('');
@@ -1021,6 +1084,9 @@ export default function Index() {
                       Voice input is not supported in your browser. Try Chrome or Edge.
                     </div>
                   )}
+                  <div className="text-xs text-gray-500 italic">
+                    💡 Date/time is auto-added. Type your comment after the dash. If you don't add text after the dash, changes won't be saved.
+                  </div>
                 </>
               ) : editing.field === 'delivery_date' ? (
                 <Popover>

@@ -17,6 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet"
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,7 +34,7 @@ import {
   DialogTitle,
   DialogDescription
 } from '@/components/ui/dialog';
-import { Edit, Trash2, Plus, EyeIcon } from 'lucide-react';
+import { Edit, Trash2, Plus, EyeIcon, X, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import * as React from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -46,17 +53,18 @@ interface Sheet {
   sku: string;
 }
 
-interface SheetDataModalProps {
+interface SheetDataDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sheetId: string;
 }
 
-function SheetDataModal({ open, onOpenChange, sheetId }: SheetDataModalProps) {
+function SheetDataDrawer({ open, onOpenChange, sheetId }: SheetDataDrawerProps) {
   const [sheetData, setSheetData] = React.useState<string[][]>([]);
   const [availableSheets, setAvailableSheets] = React.useState<string[]>([]);
   const [activeSheet, setActiveSheet] = React.useState<string>('');
   const [loading, setLoading] = React.useState(false);
+  const [isFullScreen, setIsFullScreen] = React.useState(false);
 
   const fetchData = (sheetName?: string) => {
     setLoading(true);
@@ -96,95 +104,169 @@ function SheetDataModal({ open, onOpenChange, sheetId }: SheetDataModalProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl w-[90vw]">
-        <DialogHeader>
-          <DialogTitle>Sheet Data</DialogTitle>
-          <DialogDescription>
-            Navigate between sheets from this file.
-          </DialogDescription>
-        </DialogHeader>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className={`
+          w-full sm:max-w-full 
+          ${isFullScreen ? 'h-screen' : 'h-[95vh]'}
+          flex flex-col p-0
+        `}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onOpenChange(false)}
+              className="h-8 w-8"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            <div>
+              <SheetTitle className="text-lg">Sheet Data</SheetTitle>
+              <SheetDescription className="text-sm">
+                Navigating: {activeSheet || 'Loading...'}
+              </SheetDescription>
+            </div>
+          </div>
 
-       {/* Navigation Controls */}
-{availableSheets.length > 0 && (
-  <div className="flex items-center justify-between mb-2">
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={handlePrev}
-      disabled={availableSheets.indexOf(activeSheet) <= 0}
-    >
-      Previous
-    </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsFullScreen(!isFullScreen)}
+              className="h-8"
+            >
+              {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
 
-    <Select
-      value={activeSheet}
-      onValueChange={(value) => fetchData(value)}
-    >
-      <SelectTrigger className="w-[200px]">
-        <SelectValue placeholder="Select sheet" />
-      </SelectTrigger>
-      <SelectContent>
-        {availableSheets.map((name) => (
-          <SelectItem key={name} value={name}>
-            {name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+        {/* Navigation Controls */}
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePrev}
+                disabled={availableSheets.indexOf(activeSheet) <= 0}
+                className="h-8"
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
 
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={handleNext}
-      disabled={availableSheets.indexOf(activeSheet) >= availableSheets.length - 1}
-    >
-      Next
-    </Button>
-  </div>
-)}
-
-
-        {/* Table Content */}
-        <div className="overflow-auto max-h-[75vh] mt-2">
-          {loading ? (
-            <div className="text-center py-4">Loading...</div>
-          ) : sheetData.length === 0 ? (
-            <div className="text-center py-4">No data found.</div>
-          ) : (
-            <table className="table-auto border-collapse border border-gray-200 w-full text-xs">
-              <thead>
-                <tr>
-                  {sheetData[0].map((header, i) => (
-                    <th key={i} className="border p-1 bg-gray-100">
-                      {header}
-                    </th>
+              <Select
+                value={activeSheet}
+                onValueChange={(value) => fetchData(value)}
+              >
+                <SelectTrigger className="w-[200px] h-8">
+                  <SelectValue placeholder="Select sheet" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSheets.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sheetData.slice(1).map((row, rowIndex) => (
-                  <tr key={rowIndex}>
-                    {row.map((cell, cellIndex) => (
-                      <td key={cellIndex} className="border p-1">
-                        {cell}
-                      </td>
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNext}
+                disabled={availableSheets.indexOf(activeSheet) >= availableSheets.length - 1}
+                className="h-8"
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+
+            <div className="text-sm text-muted-foreground">
+              {availableSheets.length > 0 && (
+                <>
+                  Sheet {availableSheets.indexOf(activeSheet) + 1} of {availableSheets.length}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Table Content - Flex container to fill remaining space */}
+        <div className="flex-1 overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-2"></div>
+                <p className="text-muted-foreground">Loading sheet data...</p>
+              </div>
+            </div>
+          ) : sheetData.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <p className="text-muted-foreground">No data found in this sheet.</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchData()}
+                  className="mt-2"
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full overflow-auto p-2">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full divide-y divide-gray-200 border">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    <tr>
+                      {sheetData[0].map((header, i) => (
+                        <th
+                          key={i}
+                          className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border"
+                        >
+                          <div className="truncate max-w-[200px]" title={header}>
+                            {header}
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {sheetData.slice(1).map((row, rowIndex) => (
+                      <tr
+                        key={rowIndex}
+                        className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                      >
+                        {row.map((cell, cellIndex) => (
+                          <td
+                            key={cellIndex}
+                            className="px-3 py-2 text-sm border"
+                          >
+                            <div className="truncate max-w-[200px]" title={cell}>
+                              {cell}
+                            </div>
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+                <div className="mt-2 text-xs text-muted-foreground text-center">
+                  Showing {sheetData.length - 1} rows • {sheetData[0]?.length || 0} columns
+                </div>
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -197,7 +279,7 @@ export default function SheetsView() {
   const [deletingSheet, setDeletingSheet] = React.useState<Sheet | null>(null);
   const [creatingSheet, setCreatingSheet] = React.useState(false);
   const [createValues, setCreateValues] = React.useState<Partial<Sheet>>({});
-  const [viewModalOpen, setViewModalOpen] = React.useState(false);
+  const [viewDrawerOpen, setViewDrawerOpen] = React.useState(false);
   const [viewSheetId, setViewSheetId] = React.useState<string | null>(null);
 
   const filteredSheets = React.useMemo(() => {
@@ -237,6 +319,11 @@ export default function SheetsView() {
     });
   };
 
+  const openSheetView = (sheetId: string) => {
+    setViewSheetId(sheetId);
+    setViewDrawerOpen(true);
+  };
+
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Sheets" />
@@ -250,7 +337,7 @@ export default function SheetsView() {
             onChange={(e) => setFilter(e.target.value)}
             className="flex-1"
           />
-          {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
+          {!["operations", "finance", "callcenter1", ""].includes(usePage().props.auth.user.roles) && (
             <Button
               size="sm"
               onClick={() => setCreatingSheet(true)}
@@ -302,7 +389,7 @@ export default function SheetsView() {
                   ))}
                 </CardContent>
                 <div className="flex gap-2 justify-end p-2 flex-wrap">
-                  {!["operations","finance", "callcenter1",""].includes(usePage().props.auth.user.roles) && (
+                  {!["operations", "finance", "callcenter1", ""].includes(usePage().props.auth.user.roles) && (
                     <>
                       <Button size="sm" variant="outline" onClick={() => handleEditOpen(sheet)}>
                         <Edit size={16} />
@@ -315,12 +402,11 @@ export default function SheetsView() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      setViewSheetId(sheet.sheet_id);
-                      setViewModalOpen(true);
-                    }}
+                    onClick={() => openSheetView(sheet.sheet_id)}
+                    className="flex items-center gap-1"
                   >
                     <EyeIcon size={16} />
+                    View Data
                   </Button>
                 </div>
               </Card>
@@ -337,12 +423,12 @@ export default function SheetsView() {
             <DialogDescription>Fill in the details for the new sheet below.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
-            {['sheet_id','sheet_name','shopify_name','country','sku','access_token'].map((field) => (
+            {['sheet_id', 'sheet_name', 'shopify_name', 'country', 'sku', 'access_token'].map((field) => (
               <Input
                 key={field}
                 value={(createValues as any)[field] || ''}
                 onChange={(e) => setCreateValues({ ...createValues, [field]: e.target.value })}
-                placeholder={field.replace('_',' ').replace(/\b\w/g, l => l.toUpperCase())}
+                placeholder={field.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               />
             ))}
             <textarea
@@ -368,12 +454,12 @@ export default function SheetsView() {
             <DialogDescription>Update the sheet information below.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 mt-2">
-            {['sheet_id','sheet_name','shopify_name','country','sku','access_token'].map((field) => (
+            {['sheet_id', 'sheet_name', 'shopify_name', 'country', 'sku', 'access_token'].map((field) => (
               <Input
                 key={field}
                 value={(editValues as any)[field] || ''}
                 onChange={(e) => setEditValues({ ...editValues, [field]: e.target.value })}
-                placeholder={field.replace('_',' ').replace(/\b\w/g, l => l.toUpperCase())}
+                placeholder={field.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               />
             ))}
             <textarea
@@ -407,11 +493,11 @@ export default function SheetsView() {
         </DialogContent>
       </Dialog>
 
-      {/* View Sheet Data Modal */}
+      {/* View Sheet Data Drawer */}
       {viewSheetId && (
-        <SheetDataModal
-          open={viewModalOpen}
-          onOpenChange={setViewModalOpen}
+        <SheetDataDrawer
+          open={viewDrawerOpen}
+          onOpenChange={setViewDrawerOpen}
           sheetId={viewSheetId}
         />
       )}
