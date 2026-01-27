@@ -128,6 +128,11 @@ export default function DispatchView() {
   const [deletingOrder, setDeletingOrder] = React.useState<SheetOrder | null>(null);
   const [showAccessDenied, setShowAccessDenied] = React.useState(false);
 
+  const [bulkDownloadAgent, setBulkDownloadAgent] = React.useState("all");
+  const [bulkDownloadDateRange, setBulkDownloadDateRange] = React.useState<{
+    from: Date | undefined;
+    to: Date | undefined;
+  }>({ from: undefined, to: undefined });
   // Loading states
   const [isFiltering, setIsFiltering] = React.useState(false);
   const [isBulkAssigning, setIsBulkAssigning] = React.useState(false);
@@ -236,8 +241,15 @@ export default function DispatchView() {
     }, 1500);
   };
 
+  // ✅ UPDATED: Handle bulk download with optional filters
   const handleBulkDownload = () => {
-    if (!bulkDownloadOrderNumbers.trim()) {
+    // Allow download if there are order numbers OR filters are set
+    const hasOrderNumbers = bulkDownloadOrderNumbers.trim();
+    const hasFilters = bulkDownloadAgent !== "all" || bulkDownloadDateRange.from;
+
+    if (!hasOrderNumbers && !hasFilters) {
+      setErrorMessage("Please enter order numbers or select at least one filter (agent or date range).");
+      setShowErrorModal(true);
       return;
     }
 
@@ -254,11 +266,40 @@ export default function DispatchView() {
     csrfInput.value = csrfToken || '';
     form.appendChild(csrfInput);
 
-    const orderInput = document.createElement('input');
-    orderInput.type = 'hidden';
-    orderInput.name = 'order_numbers';
-    orderInput.value = bulkDownloadOrderNumbers;
-    form.appendChild(orderInput);
+    // Add order numbers if provided
+    if (hasOrderNumbers) {
+      const orderInput = document.createElement('input');
+      orderInput.type = 'hidden';
+      orderInput.name = 'order_numbers';
+      orderInput.value = bulkDownloadOrderNumbers;
+      form.appendChild(orderInput);
+    }
+
+    // Add agent filter if set
+    if (bulkDownloadAgent && bulkDownloadAgent !== "all") {
+      const agentInput = document.createElement('input');
+      agentInput.type = 'hidden';
+      agentInput.name = 'agent';
+      agentInput.value = bulkDownloadAgent;
+      form.appendChild(agentInput);
+    }
+
+    // Add date range filters if set
+    if (bulkDownloadDateRange.from) {
+      const startDateInput = document.createElement('input');
+      startDateInput.type = 'hidden';
+      startDateInput.name = 'start_date';
+      startDateInput.value = format(bulkDownloadDateRange.from, 'yyyy-MM-dd');
+      form.appendChild(startDateInput);
+    }
+
+    if (bulkDownloadDateRange.to) {
+      const endDateInput = document.createElement('input');
+      endDateInput.type = 'hidden';
+      endDateInput.name = 'end_date';
+      endDateInput.value = format(bulkDownloadDateRange.to, 'yyyy-MM-dd');
+      form.appendChild(endDateInput);
+    }
 
     document.body.appendChild(form);
     form.submit();
@@ -268,9 +309,12 @@ export default function DispatchView() {
       setIsBulkDownloading(false);
       setShowBulkDownloadModal(false);
       setBulkDownloadOrderNumbers("");
+      setBulkDownloadAgent("all");
+      setBulkDownloadDateRange({ from: undefined, to: undefined });
       router.reload();
     }, 2000);
   };
+
 
   const handlePrintAgentOrders = () => {
     if (!printAgent) {
@@ -922,23 +966,109 @@ export default function DispatchView() {
               Bulk Download Waybills
             </DialogTitle>
             <DialogDescription>
-              Enter order numbers (comma or newline separated) to download multiple waybills as a ZIP file.
+              Download waybills by entering specific order numbers, or filter by agent and date range.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="order_numbers" className="text-base font-semibold">
-                Order Numbers <span className="text-red-500">*</span>
+                Order Numbers <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
               </Label>
               <Textarea
                 id="order_numbers"
-                placeholder="Enter order numbers (e.g., ORD001, ORD002, ORD003 or one per line)"
+                placeholder="Enter order numbers (e.g., ORD001, ORD002, ORD003 or one per line) - Leave empty to use filters below"
                 value={bulkDownloadOrderNumbers}
                 onChange={(e) => setBulkDownloadOrderNumbers(e.target.value)}
-                className="min-h-[120px]"
+                className="min-h-[100px]"
               />
               <p className="text-xs text-muted-foreground">
                 Separate by commas, spaces, or new lines. Maximum 50 orders per batch.
+              </p>
+            </div>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                  Or filter by
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="download_agent" className="text-base font-semibold">
+                Agent <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+              </Label>
+              <Select
+                value={bulkDownloadAgent}
+                onValueChange={setBulkDownloadAgent}
+                disabled={parsedDownloadOrders.length > 0}
+              >
+                <SelectTrigger id="download_agent" className="h-11">
+                  <SelectValue placeholder="All Agents" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Agents</SelectItem>
+                  {agents?.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.name}>
+                      {agent.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {parsedDownloadOrders.length > 0
+                  ? "Disabled when order numbers are provided"
+                  : "Select an agent to download their waybills"}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-base font-semibold">
+                Delivery Date Range <span className="text-xs font-normal text-muted-foreground">(Optional)</span>
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={parsedDownloadOrders.length > 0}
+                    className={cn(
+                      "w-full h-11 justify-start text-left font-normal",
+                      !bulkDownloadDateRange.from && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {bulkDownloadDateRange.from ? (
+                      bulkDownloadDateRange.to ? (
+                        <>
+                          {format(bulkDownloadDateRange.from, "LLL dd, y")} -{" "}
+                          {format(bulkDownloadDateRange.to, "LLL dd, y")}
+                        </>
+                      ) : (
+                        format(bulkDownloadDateRange.from, "LLL dd, y")
+                      )
+                    ) : (
+                      <span>Pick a date range</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    initialFocus
+                    mode="range"
+                    defaultMonth={bulkDownloadDateRange.from}
+                    selected={bulkDownloadDateRange}
+                    onSelect={(range) => setBulkDownloadDateRange(range || { from: undefined, to: undefined })}
+                    numberOfMonths={2}
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground">
+                {parsedDownloadOrders.length > 0
+                  ? "Disabled when order numbers are provided"
+                  : "Leave empty to download all dates"}
               </p>
             </div>
 
@@ -959,8 +1089,37 @@ export default function DispatchView() {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  A ZIP file containing {parsedDownloadOrders.length} waybill(s) will be generated.
+                  A PDF containing {parsedDownloadOrders.length} waybill(s) will be generated.
                 </p>
+              </div>
+            )}
+
+            {parsedDownloadOrders.length === 0 && (bulkDownloadAgent !== "all" || bulkDownloadDateRange.from) && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-blue-900">
+                      Download waybills with filters:
+                    </p>
+                    <ul className="text-xs text-blue-700 space-y-1">
+                      {bulkDownloadAgent && bulkDownloadAgent !== "all" && (
+                        <li>• Agent: <strong>{bulkDownloadAgent}</strong></li>
+                      )}
+                      {bulkDownloadDateRange.from && bulkDownloadDateRange.to && (
+                        <li>
+                          • Date Range: {format(bulkDownloadDateRange.from, "MMM dd")} - {format(bulkDownloadDateRange.to, "MMM dd, yyyy")}
+                        </li>
+                      )}
+                      {(!bulkDownloadAgent || bulkDownloadAgent === "all") && (
+                        <li>• All agents</li>
+                      )}
+                      {!bulkDownloadDateRange.from && (
+                        <li>• All dates</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -970,13 +1129,15 @@ export default function DispatchView() {
               onClick={() => {
                 setShowBulkDownloadModal(false);
                 setBulkDownloadOrderNumbers("");
+                setBulkDownloadAgent("all");
+                setBulkDownloadDateRange({ from: undefined, to: undefined });
               }}
             >
               Cancel
             </Button>
             <Button
               onClick={handleBulkDownload}
-              disabled={!parsedDownloadOrders.length || isBulkDownloading}
+              disabled={isBulkDownloading}
             >
               {isBulkDownloading ? (
                 <>
@@ -986,7 +1147,8 @@ export default function DispatchView() {
               ) : (
                 <>
                   <Download className="mr-2 h-4 w-4" />
-                  Download Waybills ({parsedDownloadOrders.length})
+                  Download Waybills
+                  {parsedDownloadOrders.length > 0 && ` (${parsedDownloadOrders.length})`}
                 </>
               )}
             </Button>

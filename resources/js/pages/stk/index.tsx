@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Edit,
   Trash2,
@@ -27,7 +29,15 @@ import {
   Hash,
   Phone,
   ShoppingCart,
-  Receipt
+  Receipt,
+  LayoutGrid,
+  List,
+  ChevronDown,
+  ChevronUp,
+  PhoneCall,
+  GripVertical,
+  MessageSquare,
+  CheckSquare
 } from 'lucide-react';
 import * as React from 'react';
 
@@ -48,6 +58,8 @@ interface SheetOrder {
   city: string;
   status: string;
   delivery_date: string;
+  comments?: string;
+  confirmed: number;
 }
 
 const getStatusColor = (status: string | null | undefined) => {
@@ -62,10 +74,14 @@ const getStatusColor = (status: string | null | undefined) => {
 
 export default function Index() {
   const { props } = usePage();
-  const { orders, filters } = props as unknown as {
+  const { orders, filters, auth } = props as unknown as {
     orders: { data: SheetOrder[] };
     filters: { search?: string };
+    auth?: { user?: { id: number } };
   };
+
+  const userId = auth?.user?.id || 'guest';
+  const storageKey = `mpesa-orders-arrangement-user-${userId}`;
 
   const [searchValue, setSearchValue] = React.useState(filters?.search || '');
   const [editingOrder, setEditingOrder] = React.useState<SheetOrder | null>(null);
@@ -73,8 +89,76 @@ export default function Index() {
   const [phoneNumbers, setPhoneNumbers] = React.useState<Record<number, string>>({});
   const [loadingOrder, setLoadingOrder] = React.useState<SheetOrder | null>(null);
   const [paymentResult, setPaymentResult] = React.useState<{ status: "Success" | "Failed"; receipt?: string; amount?: number } | null>(null);
+  const [viewMode, setViewMode] = React.useState<'table' | 'card'>('table');
+  const [expandedRows, setExpandedRows] = React.useState<Set<number>>(new Set());
+  const [searchModalOpen, setSearchModalOpen] = React.useState(false);
+  const [orderedItems, setOrderedItems] = React.useState<SheetOrder[]>([]);
+  const [draggedIndex, setDraggedIndex] = React.useState<number | null>(null);
 
-  const filteredOrders = orders.data;
+  const filteredOrders = orderedItems;
+
+  // Load saved order from localStorage or use default order
+  React.useEffect(() => {
+    const savedOrderString = localStorage.getItem(storageKey);
+
+    if (savedOrderString) {
+      try {
+        const savedOrderIds = JSON.parse(savedOrderString) as number[];
+        // Reorder based on saved IDs
+        const orderedData = [...orders.data].sort((a, b) => {
+          const indexA = savedOrderIds.indexOf(a.id);
+          const indexB = savedOrderIds.indexOf(b.id);
+          // If not in saved order, put at end
+          if (indexA === -1) return 1;
+          if (indexB === -1) return -1;
+          return indexA - indexB;
+        });
+        setOrderedItems(orderedData);
+      } catch (error) {
+        console.error('Error loading saved order:', error);
+        setOrderedItems(orders.data);
+      }
+    } else {
+      setOrderedItems(orders.data);
+    }
+  }, [orders.data, storageKey]);
+
+  const toggleRowExpansion = (orderId: number) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newOrders = [...orderedItems];
+    const draggedItem = newOrders[draggedIndex];
+    newOrders.splice(draggedIndex, 1);
+    newOrders.splice(index, 0, draggedItem);
+
+    setDraggedIndex(index);
+    setOrderedItems(newOrders);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    // Save the new order to localStorage with user-specific key
+    const orderIds = orderedItems.map(order => order.id);
+    localStorage.setItem(storageKey, JSON.stringify(orderIds));
+  };
 
   const payOrder = async (order: SheetOrder) => {
     const phone = phoneNumbers[order.id] ?? order.phone;
@@ -132,14 +216,17 @@ export default function Index() {
 
   const handleEditSave = () => {
     if (!editingOrder) return;
-    router.put(`/sheetorders/${editingOrder.id}`, editingOrder, {
+    router.put(`/stk/${editingOrder.id}`, {
+      comments: editingOrder.comments,
+      confirmed: editingOrder.confirmed
+    }, {
       onSuccess: () => setEditingOrder(null),
     });
   };
 
   const handleDelete = () => {
     if (!deletingOrder) return;
-    router.delete(`/sheetorders/${deletingOrder.id}`, {
+    router.delete(`/stk/${deletingOrder.id}`, {
       onSuccess: () => setDeletingOrder(null),
     });
   };
@@ -148,31 +235,48 @@ export default function Index() {
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="M-Pesa Payment Processing" />
 
-      <div className="space-y-6 p-4">
+      <div className="space-y-4 p-2 sm:p-4 pb-20 sm:pb-4">
         {/* Header Section */}
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Order Payment Processing</h1>
-          <p className="text-muted-foreground">Process and manage M-Pesa payments for your orders</p>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Order Payments</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Process M-Pesa payments for orders</p>
         </div>
 
-        {/* Search Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Search Orders
-            </CardTitle>
-            <CardDescription>Filter orders by order number, client name, or phone number</CardDescription>
+        {/* Search and View Toggle */}
+        {/* Desktop Search Card */}
+        <Card className="hidden sm:block">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                  <Search className="h-4 w-4 sm:h-5 sm:w-5" />
+                  Search Orders
+                </CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Filter by order number, name, or phone</CardDescription>
+              </div>
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'card')} className="w-auto">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="table" className="gap-2 text-xs sm:text-sm">
+                    <List className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="hidden sm:inline">Table</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="card" className="gap-2 text-xs sm:text-sm">
+                    <LayoutGrid className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <span className="hidden sm:inline">Cards</span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search orders..."
                   value={searchValue}
                   onChange={e => setSearchValue(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 h-9 sm:h-10"
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
                       router.get('/stk', { search: searchValue.trim() }, { preserveState: true, replace: true });
@@ -185,10 +289,11 @@ export default function Index() {
                   onClick={() => {
                     router.get('/stk', { search: searchValue.trim() }, { preserveState: true, replace: true });
                   }}
-                  className="gap-2"
+                  className="gap-2 flex-1 sm:flex-none h-9 sm:h-10"
+                  size="sm"
                 >
                   <Search className="h-4 w-4" />
-                  Search
+                  <span className="sm:inline">Search</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -196,51 +301,307 @@ export default function Index() {
                     setSearchValue('');
                     router.get('/stk', {}, { preserveState: true, replace: true });
                   }}
-                  className="gap-2"
+                  className="gap-2 h-9 sm:h-10"
+                  size="sm"
                 >
                   <X className="h-4 w-4" />
-                  Clear
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Orders Grid */}
+        {/* Mobile Search Button */}
+        <div className="sm:hidden flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setSearchModalOpen(true)}
+            className="flex-1 gap-2 h-12 justify-start text-muted-foreground"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search orders...</span>
+          </Button>
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'table' | 'card')} className="w-auto">
+            <TabsList className="grid w-full grid-cols-2 h-12">
+              <TabsTrigger value="table" className="gap-2">
+                <List className="h-4 w-4" />
+              </TabsTrigger>
+              <TabsTrigger value="card" className="gap-2">
+                <LayoutGrid className="h-4 w-4" />
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {/* Orders Display */}
         {filteredOrders.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <Package className="h-16 w-16 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No orders found</h3>
-              <p className="text-muted-foreground">Try adjusting your search filters</p>
+            <CardContent className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+              <Package className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mb-4" />
+              <h3 className="text-base sm:text-lg font-semibold mb-2">No orders found</h3>
+              <p className="text-sm text-muted-foreground">Try adjusting your search filters</p>
             </CardContent>
           </Card>
+        ) : viewMode === 'table' ? (
+          /* Table View */
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              {/* Desktop Table */}
+              <div className="hidden lg:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead className="w-[120px]">Order #</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead className="text-right w-[180px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredOrders.map((order, index) => (
+                      <TableRow
+                        key={order.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragEnd={handleDragEnd}
+                        className={`cursor-move ${draggedIndex === index ? 'opacity-50' : ''}`}
+                      >
+                        <TableCell className="cursor-grab active:cursor-grabbing">
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
+                        </TableCell>
+                        <TableCell className="font-medium">{order.order_no}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{order.client_name}</span>
+                            {order.address && <span className="text-xs text-muted-foreground truncate max-w-[200px]">{order.address}</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span>{order.product_name}</span>
+                            {order.delivery_date && <span className="text-xs text-muted-foreground">{order.delivery_date}</span>}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">{order.quantity}</TableCell>
+                        <TableCell className="text-right font-semibold">KES {order.amount.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`${getStatusColor(order.status)} border`}>
+                            {order.status || 'Unknown'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={phoneNumbers[order.id] ?? order.phone}
+                            onChange={e => setPhoneNumbers(prev => ({ ...prev, [order.id]: e.target.value }))}
+                            placeholder="254XXXXXXXXX"
+                            className="h-8 w-[140px]"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
+                                className="h-8 w-8 p-0 bg-green-600 hover:bg-green-700"
+                                title="Call"
+                              >
+                                <PhoneCall className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => payOrder(order)}
+                                className="h-8 w-8 p-0"
+                                title="Pay Now"
+                              >
+                                <Smartphone className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditingOrder(order)}
+                                className="h-8 w-8 p-0"
+                                title="Edit"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setDeletingOrder(order)}
+                                className="h-8 w-8 p-0"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile/Tablet Expandable Table */}
+              <div className="lg:hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead className="w-[40px]"></TableHead>
+                      <TableHead>Order</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredOrders.map((order, index) => (
+                      <React.Fragment key={order.id}>
+                        <TableRow
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, index)}
+                          onDragOver={(e) => handleDragOver(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={`${draggedIndex === index ? 'opacity-50' : ''}`}
+                        >
+                          <TableCell className="cursor-grab active:cursor-grabbing">
+                            <GripVertical className="h-4 w-4 text-muted-foreground" />
+                          </TableCell>
+                          <TableCell className="cursor-pointer" onClick={() => toggleRowExpansion(order.id)}>
+                            {expandedRows.has(order.id) ?
+                              <ChevronUp className="h-4 w-4" /> :
+                              <ChevronDown className="h-4 w-4" />
+                            }
+                          </TableCell>
+                          <TableCell onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer">
+                            <div className="flex flex-col">
+                              <span className="font-medium text-sm">{order.order_no}</span>
+                              <span className="text-xs text-muted-foreground truncate">{order.client_name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer text-right font-semibold text-sm">
+                            KES {order.amount.toLocaleString()}
+                          </TableCell>
+                          <TableCell onClick={() => toggleRowExpansion(order.id)} className="cursor-pointer">
+                            <Badge variant="outline" className={`${getStatusColor(order.status)} border text-xs`}>
+                              {order.status || 'Unknown'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                        {expandedRows.has(order.id) && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="bg-muted/50 p-4">
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground text-xs">Product:</span>
+                                    <p className="font-medium">{order.product_name}</p>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground text-xs">Quantity:</span>
+                                    <p className="font-medium">{order.quantity}</p>
+                                  </div>
+                                  {order.address && (
+                                    <div className="col-span-2">
+                                      <span className="text-muted-foreground text-xs">Address:</span>
+                                      <p className="font-medium text-xs">{order.address}</p>
+                                    </div>
+                                  )}
+                                  {order.delivery_date && (
+                                    <div className="col-span-2">
+                                      <span className="text-muted-foreground text-xs">Delivery:</span>
+                                      <p className="font-medium">{order.delivery_date}</p>
+                                    </div>
+                                  )}
+                                </div>
+                                <Separator />
+                                <div className="space-y-2">
+                                  <Label htmlFor={`phone-mobile-${order.id}`} className="text-xs">M-Pesa Phone</Label>
+                                  <Input
+                                    id={`phone-mobile-${order.id}`}
+                                    value={phoneNumbers[order.id] ?? order.phone}
+                                    onChange={e => setPhoneNumbers(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                    placeholder="254XXXXXXXXX"
+                                    className="h-9"
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
+                                    className="h-10 w-10 p-0 bg-green-600 hover:bg-green-700 flex-shrink-0"
+                                  >
+                                    <PhoneCall className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => payOrder(order)}
+                                    className="flex-1 gap-2 h-10"
+                                  >
+                                    <Smartphone className="h-4 w-4" />
+                                    Pay Now
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setEditingOrder(order)} className="h-10 w-10 p-0 flex-shrink-0">
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => setDeletingOrder(order)} className="h-10 w-10 p-0 flex-shrink-0">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </Card>
         ) : (
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredOrders.map(order => (
-              <Card key={order.id} className="hover:shadow-lg transition-shadow duration-200">
+          /* Card View */
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredOrders.map((order, index) => (
+              <Card
+                key={order.id}
+                className={`hover:shadow-lg transition-shadow duration-200 ${draggedIndex === index ? 'opacity-50' : ''}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+              >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
+                    <div className="cursor-grab active:cursor-grabbing flex-shrink-0 pt-1">
+                      <GripVertical className="h-5 w-5 text-muted-foreground" />
+                    </div>
                     <div className="space-y-1 flex-1 min-w-0">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Hash className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <CardTitle className="text-sm sm:text-base flex items-center gap-2">
+                        <Hash className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
                         <span className="truncate">{order.order_no}</span>
                       </CardTitle>
-                      <CardDescription className="flex items-center gap-1.5">
-                        <User className="h-3.5 w-3.5 flex-shrink-0" />
+                      <CardDescription className="flex items-center gap-1.5 text-xs">
+                        <User className="h-3 w-3 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
                         <span className="truncate">{order.client_name}</span>
                       </CardDescription>
                     </div>
-                    <Badge variant="outline" className={`${getStatusColor(order.status)} border flex-shrink-0`}>
+                    <Badge variant="outline" className={`${getStatusColor(order.status)} border flex-shrink-0 text-xs`}>
                       {order.status || 'Unknown'}
                     </Badge>
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-3">
-                  {/* Product Info */}
-                  <div className="flex items-start gap-2 text-sm">
-                    <Package className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <CardContent className="space-y-2 sm:space-y-3">
+                  <div className="flex items-start gap-2 text-xs sm:text-sm">
+                    <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{order.product_name}</div>
                       <div className="text-muted-foreground flex items-center gap-1">
@@ -250,34 +611,30 @@ export default function Index() {
                     </div>
                   </div>
 
-                  {/* Amount */}
-                  <div className="flex items-center gap-2 text-sm">
-                    <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className="font-semibold text-lg">KES {order.amount.toLocaleString()}</span>
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
+                    <DollarSign className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
+                    <span className="font-semibold text-base sm:text-lg">KES {order.amount.toLocaleString()}</span>
                   </div>
 
-                  {/* Location */}
                   {order.address && (
-                    <div className="flex items-start gap-2 text-sm text-muted-foreground">
-                      <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <div className="flex items-start gap-2 text-xs sm:text-sm text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 mt-0.5 flex-shrink-0" />
                       <span className="truncate">{order.address}</span>
                     </div>
                   )}
 
-                  {/* Delivery Date */}
                   {order.delivery_date && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="h-4 w-4 flex-shrink-0" />
+                    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+                      <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                       <span>{order.delivery_date}</span>
                     </div>
                   )}
 
                   <Separator />
 
-                  {/* Phone Input */}
                   <div className="space-y-2">
                     <Label htmlFor={`phone-${order.id}`} className="text-xs flex items-center gap-1.5">
-                      <Phone className="h-3.5 w-3.5" />
+                      <Phone className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                       M-Pesa Phone Number
                     </Label>
                     <Input
@@ -285,24 +642,34 @@ export default function Index() {
                       value={phoneNumbers[order.id] ?? order.phone}
                       onChange={e => setPhoneNumbers(prev => ({ ...prev, [order.id]: e.target.value }))}
                       placeholder="254XXXXXXXXX"
-                      className="h-9"
+                      className="h-8 sm:h-9"
                     />
                   </div>
 
-                  {/* Action Buttons */}
                   <div className="flex gap-2 pt-2">
                     <Button
                       size="sm"
+                      onClick={() => window.location.href = `tel:${phoneNumbers[order.id] ?? order.phone}`}
+                      className="flex-1 gap-2 h-9 bg-green-600 hover:bg-green-700"
+                    >
+                      <PhoneCall className="h-4 w-4" />
+                      Call
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => payOrder(order)}
-                      className="flex-1 gap-2"
+                      className="flex-1 gap-2 h-9"
                     >
                       <Smartphone className="h-4 w-4" />
-                      Pay Now
+                      Pay
                     </Button>
+                  </div>
+                  <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => setEditingOrder(order)}
+                      className="flex-1 h-9"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -310,6 +677,7 @@ export default function Index() {
                       size="sm"
                       variant="outline"
                       onClick={() => setDeletingOrder(order)}
+                      className="flex-1 h-9"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -323,61 +691,57 @@ export default function Index() {
 
       {/* Edit Modal */}
       <Dialog open={!!editingOrder} onOpenChange={open => !open && setEditingOrder(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-w-[95vw]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5" />
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Edit className="h-4 w-4 sm:h-5 sm:w-5" />
               Edit Order
             </DialogTitle>
-            <DialogDescription>
-              Update order details for {editingOrder?.order_no}
+            <DialogDescription className="text-xs sm:text-sm">
+              Update comments and confirmation status for {editingOrder?.order_no}
             </DialogDescription>
           </DialogHeader>
           {editingOrder && (
-            <div className="space-y-4 py-4">
+            <div className="space-y-3 sm:space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="client_name" className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  Client Name
+                <Label htmlFor="comments" className="flex items-center gap-2 text-xs sm:text-sm">
+                  <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Comments
                 </Label>
-                <Input
-                  id="client_name"
-                  value={editingOrder.client_name}
-                  onChange={e => setEditingOrder({ ...editingOrder, client_name: e.target.value })}
-                  placeholder="Enter client name"
+                <textarea
+                  id="comments"
+                  value={editingOrder.comments || ''}
+                  onChange={e => setEditingOrder({ ...editingOrder, comments: e.target.value })}
+                  placeholder="Enter comments..."
+                  className="w-full min-h-[100px] px-3 py-2 text-sm border border-input rounded-md bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+                  rows={4}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="address" className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  Address
+                <Label htmlFor="confirmed" className="text-xs sm:text-sm flex items-center gap-2">
+                  <CheckSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  Confirmation Status
                 </Label>
-                <Input
-                  id="address"
-                  value={editingOrder.address}
-                  onChange={e => setEditingOrder({ ...editingOrder, address: e.target.value })}
-                  placeholder="Enter address"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="product_name" className="flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Product Name
-                </Label>
-                <Input
-                  id="product_name"
-                  value={editingOrder.product_name}
-                  onChange={e => setEditingOrder({ ...editingOrder, product_name: e.target.value })}
-                  placeholder="Enter product name"
-                />
+                <div className="flex items-center space-x-2 p-3 border rounded-md bg-muted/50">
+                  <input
+                    type="checkbox"
+                    id="confirmed"
+                    checked={editingOrder.confirmed === 1}
+                    onChange={e => setEditingOrder({ ...editingOrder, confirmed: e.target.checked ? 1 : 0 })}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary cursor-pointer"
+                  />
+                  <Label htmlFor="confirmed" className="text-sm font-normal cursor-pointer">
+                    Order Confirmed
+                  </Label>
+                </div>
               </div>
             </div>
           )}
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setEditingOrder(null)}>
+            <Button variant="outline" onClick={() => setEditingOrder(null)} size="sm" className="h-9">
               Cancel
             </Button>
-            <Button onClick={handleEditSave}>
+            <Button onClick={handleEditSave} size="sm" className="h-9">
               Save Changes
             </Button>
           </div>
@@ -386,30 +750,30 @@ export default function Index() {
 
       {/* Delete Confirmation Modal */}
       <Dialog open={!!deletingOrder} onOpenChange={open => !open && setDeletingOrder(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-w-[95vw]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="h-5 w-5" />
+            <DialogTitle className="flex items-center gap-2 text-destructive text-base sm:text-lg">
+              <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" />
               Confirm Deletion
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           {deletingOrder && (
             <div className="py-4">
-              <p className="text-sm">
+              <p className="text-xs sm:text-sm">
                 Are you sure you want to delete order{' '}
                 <span className="font-semibold">{deletingOrder.order_no}</span>?
               </p>
             </div>
           )}
           <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setDeletingOrder(null)}>
+            <Button variant="outline" onClick={() => setDeletingOrder(null)} size="sm" className="h-9">
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDelete} className="gap-2">
-              <Trash2 className="h-4 w-4" />
+            <Button variant="destructive" onClick={handleDelete} className="gap-2 h-9" size="sm">
+              <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               Delete Order
             </Button>
           </div>
@@ -418,19 +782,19 @@ export default function Index() {
 
       {/* Payment Processing Modal */}
       <Dialog open={!!loadingOrder} onOpenChange={() => { }}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-w-[95vw]">
           {!paymentResult ? (
             <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-primary/10 p-4">
-                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+              <div className="rounded-full bg-primary/10 p-3 sm:p-4">
+                <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-primary" />
               </div>
               <DialogHeader>
-                <DialogTitle className="text-xl font-semibold">Processing Payment</DialogTitle>
-                <DialogDescription className="text-base">
+                <DialogTitle className="text-lg sm:text-xl font-semibold">Processing Payment</DialogTitle>
+                <DialogDescription className="text-sm sm:text-base">
                   Please check your phone to complete the M-Pesa transaction
                 </DialogDescription>
               </DialogHeader>
-              <div className="bg-muted rounded-lg p-4 w-full space-y-2 text-sm">
+              <div className="bg-muted rounded-lg p-3 sm:p-4 w-full space-y-2 text-xs sm:text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Order:</span>
                   <span className="font-medium">{loadingOrder?.order_no}</span>
@@ -443,28 +807,28 @@ export default function Index() {
             </div>
           ) : paymentResult.status === "Success" ? (
             <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-green-100 p-4">
-                <CheckCircle2 className="h-12 w-12 text-green-600" />
+              <div className="rounded-full bg-green-100 p-3 sm:p-4">
+                <CheckCircle2 className="h-10 w-10 sm:h-12 sm:w-12 text-green-600" />
               </div>
               <DialogHeader>
-                <DialogTitle className="text-xl font-semibold text-green-600">
+                <DialogTitle className="text-lg sm:text-xl font-semibold text-green-600">
                   Payment Successful!
                 </DialogTitle>
-                <DialogDescription>
+                <DialogDescription className="text-sm">
                   Your M-Pesa payment has been processed
                 </DialogDescription>
               </DialogHeader>
-              <div className="bg-green-50 rounded-lg p-4 w-full space-y-2 text-sm border border-green-200">
+              <div className="bg-green-50 rounded-lg p-3 sm:p-4 w-full space-y-2 text-xs sm:text-sm border border-green-200">
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Hash className="h-3.5 w-3.5" />
+                    <Hash className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     Order:
                   </span>
                   <span className="font-medium">{loadingOrder?.order_no}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <DollarSign className="h-3.5 w-3.5" />
+                    <DollarSign className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     Amount:
                   </span>
                   <span className="font-medium">KES {paymentResult.amount?.toLocaleString()}</span>
@@ -472,14 +836,14 @@ export default function Index() {
                 <Separator className="bg-green-200" />
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
-                    <Receipt className="h-3.5 w-3.5" />
+                    <Receipt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     Receipt:
                   </span>
                   <span className="font-semibold text-green-700">{paymentResult.receipt}</span>
                 </div>
               </div>
               <Button
-                className="w-full gap-2"
+                className="w-full gap-2 h-9 sm:h-10"
                 onClick={() => {
                   setLoadingOrder(null);
                   window.location.reload();
@@ -491,24 +855,24 @@ export default function Index() {
             </div>
           ) : (
             <div className="flex flex-col items-center text-center space-y-4 py-6">
-              <div className="rounded-full bg-red-100 p-4">
-                <XCircle className="h-12 w-12 text-red-600" />
+              <div className="rounded-full bg-red-100 p-3 sm:p-4">
+                <XCircle className="h-10 w-10 sm:h-12 sm:w-12 text-red-600" />
               </div>
               <DialogHeader>
-                <DialogTitle className="text-xl font-semibold text-red-600">
+                <DialogTitle className="text-lg sm:text-xl font-semibold text-red-600">
                   Payment Failed
                 </DialogTitle>
-                <DialogDescription>
+                <DialogDescription className="text-sm">
                   The M-Pesa payment could not be completed
                 </DialogDescription>
               </DialogHeader>
-              <div className="bg-red-50 rounded-lg p-4 w-full text-sm border border-red-200">
+              <div className="bg-red-50 rounded-lg p-3 sm:p-4 w-full text-xs sm:text-sm border border-red-200">
                 <p className="text-muted-foreground">
                   The transaction was declined or timed out. Please try again.
                 </p>
               </div>
               <Button
-                className="w-full gap-2"
+                className="w-full gap-2 h-9 sm:h-10"
                 variant="destructive"
                 onClick={() => setLoadingOrder(null)}
               >
@@ -517,6 +881,66 @@ export default function Index() {
               </Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mobile Search Modal */}
+      <Dialog open={searchModalOpen} onOpenChange={setSearchModalOpen}>
+        <DialogContent className="sm:max-w-md max-w-[95vw]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Search Orders
+            </DialogTitle>
+            <DialogDescription>
+              Filter by order number, name, or phone
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="mobile-search">Search</Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="mobile-search"
+                  placeholder="Search orders..."
+                  value={searchValue}
+                  onChange={e => setSearchValue(e.target.value)}
+                  className="pl-9 h-10"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      router.get('/stk', { search: searchValue.trim() }, { preserveState: true, replace: true });
+                      setSearchModalOpen(false);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Button
+              onClick={() => {
+                router.get('/stk', { search: searchValue.trim() }, { preserveState: true, replace: true });
+                setSearchModalOpen(false);
+              }}
+              className="gap-2 h-10 w-full"
+            >
+              <Search className="h-4 w-4" />
+              Search
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSearchValue('');
+                router.get('/stk', {}, { preserveState: true, replace: true });
+                setSearchModalOpen(false);
+              }}
+              className="gap-2 h-10 w-full"
+            >
+              <X className="h-4 w-4" />
+              Clear Search
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>

@@ -8,6 +8,9 @@ use App\Http\Controllers\VoiceController;
 use App\Http\Controllers\AppScriptController;
 use App\Http\Controllers\C2BTransactionController;
 use App\Http\Controllers\StkController;
+use App\Http\Controllers\RequisitionController;
+use App\Http\Controllers\RequisitionCategoryController;
+use App\Http\Controllers\DailyBudgetController;
 use App\Http\Controllers\WhatsappController;
 use App\Http\Controllers\AiController;
 use App\Http\Controllers\CallcenterController;
@@ -52,4 +55,8 @@ Route::prefix('webhooks')->group(function () {
     Route::post('/voice/callback', [VoiceController::class, 'callCallback']);
     Route::post('/voice/status', [VoiceController::class, 'callStatus']);
     Route::post('/voice/incoming', [VoiceController::class, 'incomingCall']);
+
+
+
+  
 });

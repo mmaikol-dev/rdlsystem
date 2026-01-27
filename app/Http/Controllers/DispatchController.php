@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Dispatch;
 use App\Models\SheetOrder;
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use ZipArchive;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 
 
@@ -137,6 +137,7 @@ class DispatchController extends Controller
         'agent',
         'delivery_date',
         'instructions',
+        'cc_email',
         'merchant',
         'created_at',
     ])
@@ -197,15 +198,7 @@ class DispatchController extends Controller
     /**
      * Bulk assign orders to an agent
      */
-  
-
-/**
- * Bulk assign orders to an agent and generate PDF
- */
-/**
- * Bulk assign orders to an agent and generate PDF
- */
-public function bulkAssignAgent(Request $request)
+    public function bulkAssignAgent(Request $request)
 {
     $validated = $request->validate([
         'order_numbers' => 'required|string',
@@ -233,7 +226,7 @@ public function bulkAssignAgent(Request $request)
     $ordersQuery = SheetOrder::select([
         'id', 'order_date', 'order_no', 'amount', 'client_name', 
         'address', 'phone', 'alt_no', 'country', 'city', 
-        'product_name', 'quantity', 'status', 'agent', 
+        'product_name', 'quantity', 'status', 'agent', 'cc_email',
         'delivery_date', 'instructions', 'merchant', 'created_at',
     ])
     ->whereIn('order_no', $orderNumbers)
@@ -287,6 +280,28 @@ public function bulkAssignAgent(Request $request)
         "orders_{$validated['agent_name']}_".now()->format('Ymd_His').'.pdf'
     );
 }
+
+
+    public function generateWaybill(SheetOrder $order)
+    {
+        abort_unless($order, 404, 'Order not found');
+
+        $order->update(['status' => 'Dispatched']);
+
+        $pdf = Pdf::loadView('waybill', compact('order'));
+
+        $pdf->setPaper('a4', 'portrait');
+        $pdf->setOption([
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true,
+            'defaultFont' => 'sans-serif'
+        ]);
+
+        // Force file download
+        return $pdf->download("waybill_{$order->order_no}.pdf");
+    }
+
+   
 
 public function bulkDownloadWaybills(Request $request)
 {

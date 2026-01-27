@@ -42,6 +42,9 @@ import {
   ChartBarIncreasing,
   GitGraphIcon,
   LineChartIcon,
+  PenSquareIcon,
+  DollarSignIcon,
+  CircleDollarSign,
 } from 'lucide-react';
 
 // --- grouped nav items by department ---
@@ -84,6 +87,10 @@ const departmentNav = [
     label: "Finance",
     items: [
       { title: 'Transactions', href: '/transactions', icon: HandCoins },
+      { title: 'Daily Budget', href: '/budgets', icon: DollarSignIcon },
+      { title: 'Requisitions', href: '/requisitions', icon: CircleDollarSign },
+      { title: 'Requisition Categories', href: '/reqcategories', icon: LayoutGrid },
+
       { title: 'Reports', href: '/report', icon: FileAxis3DIcon },
       { title: 'Undelivered Orders', href: '/undelivered', icon: BookmarkXIcon },
       { title: 'Unremitted Orders', href: '/unremitted', icon: FileX },

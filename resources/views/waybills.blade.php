@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Waybill Template</title>
+   <head>
+    <meta charset="UTF-8">
+    <title>Waybill Template</title>
     <style>
         /* reset */
         * {
@@ -237,10 +240,18 @@
 
         table.inventory td:nth-child(1) {
             width: 26%;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         table.inventory td:nth-child(2) {
             width: 38%;
+            max-width: 100px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         table.inventory td:nth-child(3) {
@@ -256,6 +267,16 @@
         table.inventory td:nth-child(5) {
             text-align: right;
             width: 12%;
+        }
+        
+        table.inventory tbody {
+            height: 50px;
+            max-height: 50px;
+        }
+        
+        table.inventory tbody tr {
+            height: 50px;
+            max-height: 50px;
         }
 
         /* table balance */
@@ -300,6 +321,7 @@
                     <p>info@realdeallogistics.co.ke</p>
                     <p>+254 1118 820 82<br>Nairobi</p>
                 </address>
+             
                 <span>
                     {!! DNS2D::getBarcodeHTML("$order->order_no | $order->product_name | $order->quantity", 'QRCODE', 6, 6) !!}
                     <input type="file" accept="image/*">
@@ -350,8 +372,11 @@
                     </tbody>
                 </table>
     
-                <p>PayBill No: 4136031<br>
-                    Account No: {{ $order->order_no }}</p>
+ <p style="font-size: 22px; font-family: 'Poppins', sans-serif; letter-spacing: 1px;">
+    PayBill No: 4 1 3 6 0 3 1<br>
+    Account No: {{ $order->order_no }}
+</p>
+
     
                 <table class="balance">
                     <tr>
@@ -365,12 +390,12 @@
                 </table>
             </article>
     
-            <aside style="padding-top:13rem;">
-                <h1>www.realdeallogistics.co.ke</h1>
-                <center>
-                    <div>"Your trusted logistics company"</div>
-                </center>
-            </aside>
+              <aside style="padding-top:9rem;">
+        <center>
+            <div contenteditable>
+                <p>"Your trusted logistics company"</div>
+        </center>
+    </aside>
         </div>
     @endforeach
     </body>

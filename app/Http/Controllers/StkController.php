@@ -248,4 +248,32 @@ class StkController extends Controller
             'amount' => $transaction->amount,
         ]);
     }
+
+    /**
+ * Update order comments and confirmation status
+ */
+public function update(Request $request, $id)
+{
+    Log::info('Updating sheet order', ['id' => $id, 'data' => $request->all()]);
+
+    try {
+        $request->validate([
+            'comments' => 'nullable|string',
+            'confirmed' => 'required|boolean',
+        ]);
+
+        $order = SheetOrder::findOrFail($id);
+        
+        $order->comments = $request->input('comments');
+        $order->confirmed = $request->input('confirmed');
+        $order->save();
+
+        Log::info('Sheet order updated successfully', ['id' => $id]);
+
+        return redirect()->back()->with('success', 'Order updated successfully');
+    } catch (\Exception $e) {
+        Log::error('Failed to update sheet order: ' . $e->getMessage());
+        return redirect()->back()->with('error', 'Failed to update order');
+    }
+}
 }
