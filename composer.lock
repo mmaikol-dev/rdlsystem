@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "2ebb12f475419d38c4bee383d098ad2c",
+    "content-hash": "23786ea62fdfa6dd9b5c6db5683d347c",
     "packages": [
         {
             "name": "africastalking/africastalking",
@@ -7941,6 +7941,53 @@
                 }
             ],
             "time": "2024-11-21T01:49:47+00:00"
+        },
+        {
+            "name": "wasenderapi/wasenderapi-laravel",
+            "version": "v1.0.3",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/wasenderapi/wasenderapi-laravel.git",
+                "reference": "50d64417fb05ced684c39bbdca9a07e2f8398630"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/wasenderapi/wasenderapi-laravel/zipball/50d64417fb05ced684c39bbdca9a07e2f8398630",
+                "reference": "50d64417fb05ced684c39bbdca9a07e2f8398630",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/http": ">=9.0",
+                "illuminate/support": ">=9.0",
+                "php": ">=8.0"
+            },
+            "require-dev": {
+                "orchestra/testbench": "^7.0 || ^8.0 || ^9.0",
+                "pestphp/pest": "^2.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "WasenderApi\\WasenderApiServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "WasenderApi\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "Laravel SDK for WasenderAPI  with event dispatching and webhook route",
+            "support": {
+                "issues": "https://github.com/wasenderapi/wasenderapi-laravel/issues",
+                "source": "https://github.com/wasenderapi/wasenderapi-laravel/tree/v1.0.3"
+            },
+            "time": "2025-10-17T18:55:17+00:00"
         }
     ],
     "packages-dev": [
@@ -10528,12 +10575,12 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
         "php": "^8.2"
     },
-    "platform-dev": [],
+    "platform-dev": {},
     "plugin-api-version": "2.6.0"
 }

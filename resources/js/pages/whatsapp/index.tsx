@@ -37,8 +37,8 @@ interface Chat {
   to: string;
   client_name: string;
   store_name: string;
-  cc_agents?: string; // 👈 Added cc_agents field
-  status: string; // sent | delivered | read
+  cc_agents?: string;
+  status: string; // sent | delivered | read | failed | pending
   sid: string;
   message: string;
   created_at: string;
@@ -50,7 +50,7 @@ interface Conversation {
   phone: string;
   client_name: string;
   store_name: string;
-  cc_agents?: string; // 👈 Added cc_agents field
+  cc_agents?: string;
   messages: Chat[];
   latest_at: string;
 }
@@ -100,6 +100,8 @@ export default function WhatsAppPage() {
       case "read":
         return <CheckCheck className="w-3 h-3 text-blue-500" />;
       case "failed":
+        return <Clock className="w-3 h-3 text-red-500" />;
+      case "pending":
         return <Clock className="w-3 h-3 text-muted-foreground animate-pulse" />;
       default:
         return null;
@@ -142,7 +144,7 @@ export default function WhatsAppPage() {
       to: selected.phone,
       client_name: selected.client_name,
       store_name: selected.store_name,
-      cc_agents: selected.cc_agents, // 👈 Include cc_agents
+      cc_agents: selected.cc_agents,
       status: "pending",
       sid: "",
       message: message.trim(),
@@ -171,9 +173,13 @@ export default function WhatsAppPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || "",
+          "Accept": "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.content || "",
         },
-        body: JSON.stringify({ to: selected.phone, message: newMsg.message }),
+        body: JSON.stringify({
+          to: selected.phone,
+          message: newMsg.message
+        }),
       });
 
       const data = await res.json();
@@ -194,14 +200,16 @@ export default function WhatsAppPage() {
           )
         );
       } else {
-        alert("Failed to send message.");
-        // Rollback optimistic update
+        alert(`Failed to send message: ${data.error || 'Unknown error'}`);
+        // Mark message as failed instead of removing it
         setConversations(prevConversations =>
           prevConversations.map(conv =>
             conv.phone === selected.phone
               ? {
                 ...conv,
-                messages: conv.messages.filter(msg => msg.id !== newMsg.id)
+                messages: conv.messages.map(msg =>
+                  msg.id === newMsg.id ? { ...msg, status: "failed" } : msg
+                )
               }
               : conv
           )
@@ -210,13 +218,15 @@ export default function WhatsAppPage() {
     } catch (err) {
       console.error(err);
       alert("An error occurred while sending the message.");
-      // Rollback optimistic update
+      // Mark message as failed instead of removing it
       setConversations(prevConversations =>
         prevConversations.map(conv =>
           conv.phone === selected.phone
             ? {
               ...conv,
-              messages: conv.messages.filter(msg => msg.id !== newMsg.id)
+              messages: conv.messages.map(msg =>
+                msg.id === newMsg.id ? { ...msg, status: "failed" } : msg
+              )
             }
             : conv
         )
@@ -226,7 +236,7 @@ export default function WhatsAppPage() {
 
   const getUnreadCount = (conversation: Conversation) => {
     return conversation.messages.filter(msg =>
-      !["sent", "delivered", "read", "pending"].includes(msg.status)
+      !["sent", "delivered", "read", "pending", "failed"].includes(msg.status)
     ).length;
   };
 
@@ -343,7 +353,6 @@ export default function WhatsAppPage() {
                             {lastMsg && renderStatusIcon(lastMsg.status)}
                           </div>
 
-                          {/* 👇 Changed to show cc_agents instead of store_name */}
                           <p className="text-xs text-muted-foreground mt-1">
                             {conv.cc_agents || 'No agent assigned'}
                           </p>
@@ -374,7 +383,6 @@ export default function WhatsAppPage() {
                       <h3 className="font-medium">
                         {selected.client_name || selected.phone}
                       </h3>
-                      {/* 👇 Changed to show cc_agents instead of store_name */}
                       <p className="text-sm text-muted-foreground">
                         {selected.phone} • {selected.cc_agents || 'No agent'}
                       </p>
@@ -399,7 +407,7 @@ export default function WhatsAppPage() {
               <div className="flex-1 p-4 overflow-y-auto">
                 <div className="space-y-4">
                   {selected.messages.map((msg, index) => {
-                    const isOutgoing = ["sent", "delivered", "read", "pending"].includes(msg.status);
+                    const isOutgoing = ["sent", "delivered", "read", "pending", "failed"].includes(msg.status);
                     const showTimestamp = index === 0 ||
                       new Date(msg.created_at).getDate() !== new Date(selected.messages[index - 1].created_at).getDate();
 
@@ -432,7 +440,7 @@ export default function WhatsAppPage() {
                                 : "bg-muted rounded-bl-md"
                             )}
                           >
-                            <p className="text-sm leading-relaxed">{msg.message}</p>
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.message}</p>
                             <div className="flex items-center justify-end gap-1 mt-1">
                               <span className={cn(
                                 "text-xs",

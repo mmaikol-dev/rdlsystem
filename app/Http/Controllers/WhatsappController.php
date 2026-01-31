@@ -30,289 +30,404 @@ class WhatsappController extends Controller
     }
     
     
-      public function sendChat(Request $request)
+      
+public function sendChat(Request $request)
 {
-    Log::info("📩 Incoming sendChat request", $request->all());
-
-    $request->validate([
-        'to' => 'required|string',   // phone comes from frontend
-        'message' => 'required|string',
-    ]);
-
-    $phone = $this->formatPhoneNumber($request->to, 'RDL1');
-    if (!$phone) {
-        Log::error("❌ Invalid phone number", ['to' => $request->to]);
-        return response()->json(['error' => 'Invalid phone number'], 400);
-    }
-
-    // Get current logged-in user username
-   // Get current logged-in user username
-$user = auth()->user();
-$username = $user && isset($user->username) && $user->username
-    ? $user->username
-    : 'Callcenter1'; // fallback if username is missing
-
-
-    $accessToken = 'EAAaqkTmPlPQBQF4WKYtr80qPkjrD2uj4zLwqGxTOznoXfwenforoZC3BOX4gJB1cPtgCNUr1bOrYoZAFZC7fNPOAEO7q3eiqz1A5Hm666xZAn2pBubYeMExqjxVorQ7nZAlzY2dOcZA9qm32u2Cc0fk195vNoY9oZABMa3b5xrxyWNJDKKtQays1Tl5d7SSEJWOBWnr6GQ0ZBupO'; // 👈 replace with your permanent/60-day token
-    $phoneNumberId = '825780310626033'; // 👈 replace with your Meta phone number ID
-    $url = "https://graph.facebook.com/v22.0/{$phoneNumberId}/messages";
-
-    Log::info("🚀 Sending WhatsApp template", [
-        'to' => $phone,
-        'username' => $username,
-        'message' => $request->message
-    ]);
-
-    $response = Http::withToken($accessToken)->post($url, [
-        'messaging_product' => 'whatsapp',
-        'to' => $phone,
-        'type' => 'template',
-        'template' => [
-            'name' => 'chatrdl',
-            'language' => ['code' => 'en'],
-            'components' => [[
-                'type' => 'body',
-                'parameters' => [
-                    ['type' => 'text', 'text' => $username],         // {{1}}
-                    ['type' => 'text', 'text' => $request->message], // {{2}}
-                ],
-            ]],
-        ],
-    ]);
-
-    if ($response->successful()) {
-        $sid = $response->json('messages.0.id');
-
-        Whatsapp::create([
-            'to' => $phone,
-            'client_name' => $username,
-            'store_name' => 'CHAT',
-         'message' => "Talking to {$username} from RealDeal.\nMessage: {$request->message}",
-            'status' => 'sent',
-            'sid' => $sid,
-            'type' => 'template',
-        ]);
-
-        Log::info("✅ WhatsApp message sent", ['sid' => $sid]);
-
-        return response()->json(['success' => true, 'sid' => $sid]);
-    } else {
-        Log::error("❌ Template send failed", ['resp' => $response->body()]);
-        return response()->json(['error' => 'Failed to send', 'resp' => $response->json()], 500);
-    }
-}
-
-public function sendMessage($id)
-{
-    Log::info("📤 Sending WhatsApp for Order ID: $id");
+    // This method now only handles custom chat messages via WasenderAPI
+    Log::info("📤 Sending custom WhatsApp chat message", $request->all());
 
     try {
-        $order = SheetOrder::findOrFail($id);
-
-        $client_name = $order->client_name ?? 'Client';
-        $store_name = strtoupper($order->store_name ?? 'STORE');
-        $order_no = $order->order_no;
-        $product_name = $order->product_name;
-        $quantity = $order->quantity;
-        $amount = $order->amount;
-        $cc_email = $order->cc_email ?? null;
-        
-        // 👇 Debug logging to see what cc_email contains
-        Log::info("🔍 CC Email value from order: " . ($cc_email ?? 'NULL'));
-        Log::info("🔍 Order data: ", $order->toArray());
-
-        // Format phone number
-        $phone = $this->formatPhoneNumber($order->phone, $store_name);
-        if (!$phone) {
-            Log::warning("📞 Primary phone invalid. Trying alt_no.");
-            $phone = $this->formatPhoneNumber($order->alt_no, $store_name);
-        }
-
-        if (!$phone) {
-            Log::error("❌ Both phone and alt_no are invalid.");
-            return response()->json(['error' => 'Invalid phone number and alt_no.'], 400);
-        }
-
-        // Select template and phone number ID based on store
-        switch ($store_name) {
-            case 'RDL1':
-                $templateName = 'pending_template';
-                $phoneNumberId = '825780310626033';
-                $messageParams = [
-                    ['type' => 'text', 'text' => $client_name],
-                    ['type' => 'text', 'text' => $order_no],
-                    ['type' => 'text', 'text' => $product_name],
-                    ['type' => 'text', 'text' => (string) $quantity],
-                    ['type' => 'text', 'text' => 'KES ' . number_format($amount)],
-                ];
-                break;
-
-            case 'RDL2':
-                $templateName = 'pending_template';
-                $phoneNumberId = '825780310626033';
-                $messageParams = [
-                    ['type' => 'text', 'text' => $client_name],
-                    ['type' => 'text', 'text' => $order_no],
-                    ['type' => 'text', 'text' => $product_name],
-                    ['type' => 'text', 'text' => (string) $quantity],
-                    ['type' => 'text', 'text' => 'KES ' . number_format($amount)],
-                ];
-                break;
-
-            case 'RDL3':
-                $templateName = 'reminder_tz';
-                $phoneNumberId = '825780310626033';
-                $messageParams = [
-                    ['type' => 'text', 'text' => $client_name],
-                    ['type' => 'text', 'text' => $order_no],
-                    ['type' => 'text', 'text' => $product_name],
-                    ['type' => 'text', 'text' => (string) $quantity],
-                    ['type' => 'text', 'text' => 'TZS ' . number_format($amount)],
-                ];
-                break;
-
-            default:
-                Log::error("❌ Unknown store: {$store_name}");
-                return response()->json(['error' => "Unknown store: {$store_name}"], 422);
-        }
-
-        $accessToken = 'EAAaqkTmPlPQBQF4WKYtr80qPkjrD2uj4zLwqGxTOznoXfwenforoZC3BOX4gJB1cPtgCNUr1bOrYoZAFZC7fNPOAEO7q3eiqz1A5Hm666xZAn2pBubYeMExqjxVorQ7nZAlzY2dOcZA9qm32u2Cc0fk195vNoY9oZABMa3b5xrxyWNJDKKtQays1Tl5d7SSEJWOBWnr6GQ0ZBupO';
-        $url = "https://graph.facebook.com/v22.0/{$phoneNumberId}/messages";
-
-        $response = Http::withToken($accessToken)->post($url, [
-            'messaging_product' => 'whatsapp',
-            'to' => $phone,
-            'type' => 'template',
-            'template' => [
-                'name' => $templateName,
-                'language' => ['code' => 'en'],
-                'components' => [
-                    [
-                        'type' => 'body',
-                        'parameters' => $messageParams
-                    ]
-                ]
-            ]
+        $validated = $request->validate([
+            'to' => 'required|string',
+            'message' => 'required|string|max:4096',
         ]);
 
-        if ($response->successful()) {
-            Log::info("✅ WhatsApp sent to {$phone}");
+        $to = $validated['to'];
+        $messageText = $validated['message'];
 
-            $whatsappData = [
-                'to' => $phone,
-                'client_name' => $client_name,
-                'store_name' => $store_name,
-                'cc_agents' => $cc_email,
-                'message' => "Hi {$client_name}, this is Realdeal Logistics, We tried contacting you regarding your order {$order_no} for {$product_name} ({$quantity} pcs) but your phone was unreachable.
-
-Please call us back on 0740801187 to confirm your availability so we can deliver your order.
-
-Thank you.",
-                'status' => 'sent',
-                'sid' => $response->json('messages.0.id') ?? null,
-            ];
-            
-            // 👇 Debug logging to see what's being saved
-            Log::info("💾 Saving WhatsApp data: ", $whatsappData);
-
-            $whatsapp = Whatsapp::create($whatsappData);
-            
-            // 👇 Debug logging to see what was actually saved
-            Log::info("✅ Saved WhatsApp record: ", $whatsapp->toArray());
-
-            return back()->with('success', 'WhatsApp message sent successfully ✅');
-
-        } else {
-            Log::error("❌ WhatsApp API error", ['response' => $response->body()]);
-            return back()->with('error', 'Failed to send WhatsApp message ❌');
-
+        // Format phone number for WasenderAPI (no + prefix)
+        $formattedPhone = preg_replace('/\D/', '', $to);
+        
+        if (!$formattedPhone || strlen($formattedPhone) < 9) {
+            Log::error("❌ Invalid phone number format", ['to' => $to]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Invalid phone number format'
+            ], 400);
         }
 
-    } catch (\Exception $e) {
-        Log::error("❌ WhatsApp sending failed", ['error' => $e->getMessage()]);
-        return back()->with('error', 'Failed to send WhatsApp message ❌');
+        // Ensure proper country code format (no + for WasenderAPI)
+        if (!preg_match('/^(254|255)/', $formattedPhone)) {
+            if (substr($formattedPhone, 0, 1) === '0') {
+                $formattedPhone = '254' . substr($formattedPhone, 1);
+            } else {
+                $formattedPhone = '254' . $formattedPhone;
+            }
+        }
 
+        Log::info("📞 Formatted phone: {$formattedPhone}");
+
+        // Initialize WasenderAPI client
+        $apiKey = '800bd2a1e9ec63c98996e734f9cad6f5f2713f49295dd3c4589313df10758a9c';
+        $client = new \WasenderApi\WasenderClient($apiKey);
+
+        // Send message via WasenderAPI
+        $response = $client->sendText($formattedPhone, $messageText);
+
+        Log::info("✅ WasenderAPI Response:", $response);
+
+        // Extract message ID from response
+        $messageId = $response['data']['key']['id'] ?? null;
+
+        // Get conversation details from database
+        $existingChat = Whatsapp::where('to', $to)
+            ->orWhere('to', $formattedPhone)
+            ->first();
+
+        $clientName = $existingChat->client_name ?? 'Customer';
+        $storeName = $existingChat->store_name ?? 'CHAT';
+        $ccAgents = $existingChat->cc_agents ?? null;
+
+        // Save message to database
+        $whatsapp = Whatsapp::create([
+            'to' => $formattedPhone,
+            'client_name' => $clientName,
+            'store_name' => $storeName,
+            'cc_agents' => $ccAgents,
+            'message' => $messageText,
+            'status' => 'sent',
+            'sid' => $messageId,
+        ]);
+
+        Log::info("💾 Message saved to database", [
+            'id' => $whatsapp->id,
+            'to' => $formattedPhone,
+            'sid' => $messageId
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Message sent successfully',
+            'sid' => $messageId,
+            'data' => $whatsapp
+        ]);
+
+    } catch (\WasenderApi\Exceptions\WasenderApiException $e) {
+        Log::error("❌ WasenderAPI Error", [
+            'error' => $e->getMessage(),
+            'to' => $request->to ?? 'unknown'
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Failed to send message: ' . $e->getMessage()
+        ], 500);
+
+    } catch (\Exception $e) {
+        Log::error("❌ Failed to send chat message", [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'error' => 'An error occurred while sending the message'
+        ], 500);
     }
 }
 
 private function formatPhoneNumber($phoneNumber, $storeName)
 {
-    $phoneNumber = preg_replace('/\D/', '', $phoneNumber);
-    $countryCode = strtoupper($storeName) === 'RDL3' ? '+255' : '+254';
+    if (!$phoneNumber) return null;
 
-    // Must be at least 9 digits
-    if (empty($phoneNumber) || strlen($phoneNumber) < 9) {
-        return null;
+    // Remove anything not a digit
+    $phone = preg_replace('/\D/', '', $phoneNumber);
+
+    $countryCode = strtoupper($storeName) === 'RDL3' ? '255' : '254';
+
+    // If number starts with country code already
+    if (substr($phone, 0, strlen($countryCode)) === $countryCode) {
+        return '+' . $phone;
     }
 
-    if (str_starts_with($phoneNumber, '0')) {
-        return $countryCode . substr($phoneNumber, 1);
-    } elseif (str_starts_with($phoneNumber, '254') || str_starts_with($phoneNumber, '255')) {
-        return '+' . $phoneNumber;
-    } else {
-        return $countryCode . $phoneNumber;
+    // If number starts with 0 → convert 07xx → +2547xx
+    if (substr($phone, 0, 1) === '0') {
+        return '+' . $countryCode . substr($phone, 1);
     }
+
+    // If number is 9 digits only → assume local without 0
+    if (strlen($phone) === 9) {
+        return '+' . $countryCode . $phone;
+    }
+
+    // If number is 10 digits without country code e.g. 743xxxxxxx
+    if (strlen($phone) === 10) {
+        return '+' . $countryCode . substr($phone, -9);
+    }
+
+    // Default fallback
+    return null;
 }
+
 
 
 // Inside WhatsappController.php
 
 public function webhook(Request $request)
 {
-    // Log everything that comes from WhatsApp
-    Log::info("📩 WhatsApp Webhook received", $request->all());
+    // Log everything that comes from WasenderAPI
+    Log::info("📩 WasenderAPI Webhook received", $request->all());
 
-    // ✅ 1. Handle verification challenge from Meta
-    if ($request->has('hub_mode') && $request->hub_mode === 'subscribe') {
-        $verifyToken = 'realdeal_token'; // 👈 Your verify token (hardcoded for testing)
-        if ($request->hub_verify_token === $verifyToken) {
-            return response($request->hub_challenge, 200);
-        } else {
-            return response('Invalid verification token', 403);
-        }
+    // ✅ Get the webhook data
+    $data = $request->all();
+
+    if (empty($data)) {
+        Log::warning("⚠️ Empty webhook data received");
+        return response()->json(['status' => 'no_data'], 200);
     }
 
-    // ✅ 2. Handle messages and status updates
-    if ($request->has('entry')) {
-        foreach ($request->entry as $entry) {
-            if (!empty($entry['changes'])) {
-                foreach ($entry['changes'] as $change) {
-                    $value = $change['value'];
+    // ✅ Check event type
+    if (!isset($data['event'])) {
+        Log::warning("⚠️ No 'event' field found in webhook data");
+        return response()->json(['status' => 'no_event'], 200);
+    }
 
-                    // Message received from customer
-                    if (isset($value['messages'])) {
-                        foreach ($value['messages'] as $message) {
-                            Log::info("📨 Incoming message", $message);
+    $event = $data['event'];
+    Log::info("📋 Event Type: {$event}");
 
-                            // Save to DB for testing
-                            Whatsapp::create([
-                                'to' => $message['from'], // sender number
-                                'client_name' => 'UNKNOWN',
-                                'store_name' => 'WEBHOOK',
-                                'message' => $message['text']['body'] ?? 'N/A',
-                                'status' => 'received',
-                                'sid' => $message['id'],
-                                'type' => '1',
-                            ]);
-                        }
-                    }
+    // ============================================
+    // Handle chats.update event (incoming messages)
+    // ============================================
+    if ($event === 'chats.update') {
+        Log::info("💬 Processing CHATS.UPDATE event");
 
-                    // Status updates for sent messages
-                    if (isset($value['statuses'])) {
-                        foreach ($value['statuses'] as $status) {
-                            Log::info("📊 Message status update", $status);
+        // Navigate to messages array
+        $chats = $data['data']['chats'] ?? null;
+        
+        if (!$chats) {
+            Log::warning("⚠️ No chats data found");
+            return response()->json(['status' => 'no_chats'], 200);
+        }
 
-                            Whatsapp::where('sid', $status['id'])->update([
-                                'status' => $status['status'] // sent, delivered, read
-                            ]);
-                        }
-                    }
+        $messages = $chats['messages'] ?? [];
+        
+        if (empty($messages)) {
+            Log::warning("⚠️ No messages found in chats");
+            return response()->json(['status' => 'no_messages'], 200);
+        }
+
+        // Process each message
+        foreach ($messages as $msgWrapper) {
+            try {
+                $messageData = $msgWrapper['message'] ?? null;
+                
+                if (!$messageData) {
+                    Log::warning("⚠️ No message data in wrapper");
+                    continue;
                 }
+
+                Log::info("📨 Processing message:", $messageData);
+
+                // Extract key information
+                $key = $messageData['key'] ?? [];
+                $messageId = $key['id'] ?? null;
+                $fromMe = $key['fromMe'] ?? false;
+                
+                // Skip messages sent by us (fromMe: true)
+                if ($fromMe) {
+                    Log::info("⏭️ Skipping outgoing message (fromMe: true)");
+                    continue;
+                }
+
+                // Get sender - use remoteJidAlt for clean phone number
+                $from = $key['remoteJidAlt'] ?? $key['remoteJid'] ?? null;
+                
+                // Clean phone number (remove @s.whatsapp.net suffix)
+                if ($from && strpos($from, '@') !== false) {
+                    $from = explode('@', $from)[0];
+                }
+
+                $pushName = $messageData['pushName'] ?? 'UNKNOWN';
+                
+                // Extract message text
+                $messageBody = '';
+                $message = $messageData['message'] ?? [];
+                
+                // Check for different message types
+                if (isset($message['conversation'])) {
+                    $messageBody = $message['conversation'];
+                    Log::info("✅ Text from conversation: {$messageBody}");
+                }
+                elseif (isset($message['extendedTextMessage']['text'])) {
+                    $messageBody = $message['extendedTextMessage']['text'];
+                    Log::info("✅ Text from extendedTextMessage: {$messageBody}");
+                }
+                elseif (isset($message['imageMessage'])) {
+                    $caption = $message['imageMessage']['caption'] ?? '';
+                    $messageBody = '[Image received]' . ($caption ? ": {$caption}" : '');
+                    Log::info("✅ Image message: {$messageBody}");
+                }
+                elseif (isset($message['videoMessage'])) {
+                    $caption = $message['videoMessage']['caption'] ?? '';
+                    $messageBody = '[Video received]' . ($caption ? ": {$caption}" : '');
+                    Log::info("✅ Video message: {$messageBody}");
+                }
+                elseif (isset($message['audioMessage'])) {
+                    $messageBody = '[Audio received]';
+                    Log::info("✅ Audio message");
+                }
+                elseif (isset($message['documentMessage'])) {
+                    $fileName = $message['documentMessage']['fileName'] ?? 'document';
+                    $messageBody = "[Document received: {$fileName}]";
+                    Log::info("✅ Document message: {$messageBody}");
+                }
+                elseif (isset($message['stickerMessage'])) {
+                    $messageBody = '[Sticker received]';
+                    Log::info("✅ Sticker message");
+                }
+                else {
+                    $messageBody = '[Unknown message type]';
+                    Log::info("⚠️ Unknown message type:", array_keys($message));
+                }
+
+                // Validate before saving
+                if (!$from || !$messageId) {
+                    Log::error("❌ Missing required fields", [
+                        'from' => $from,
+                        'messageId' => $messageId
+                    ]);
+                    continue;
+                }
+
+                // Save to database
+                Log::info("💾 Saving message to database", [
+                    'to' => $from,
+                    'client_name' => $pushName,
+                    'message' => $messageBody,
+                    'sid' => $messageId,
+                ]);
+
+                $whatsapp = Whatsapp::create([
+                    'to' => $from,
+                    'client_name' => $pushName,
+                    'store_name' => 'WEBHOOK',
+                    'cc_agents' => null,
+                    'message' => $messageBody,
+                    'status' => 'received',
+                    'sid' => $messageId,
+                ]);
+
+                Log::info("✅✅✅ MESSAGE SAVED SUCCESSFULLY!", [
+                    'id' => $whatsapp->id,
+                    'from' => $from,
+                    'message' => $messageBody
+                ]);
+
+            } catch (\Exception $e) {
+                Log::error("❌❌❌ Failed to process message", [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
             }
         }
     }
 
-    return response('EVENT_RECEIVED', 200);
+    // ============================================
+    // Handle message status updates
+    // ============================================
+    elseif ($event === 'message.status' || $event === 'messages.update') {
+        Log::info("📊 Processing STATUS UPDATE event");
+        
+        $statusData = $data['data'] ?? [];
+        
+        Log::info("📊 Status Data:", $statusData);
+
+        $messageId = $statusData['id'] ?? null;
+        $status = $statusData['status'] ?? null;
+
+        if ($messageId && $status) {
+            $updated = Whatsapp::where('sid', $messageId)->update([
+                'status' => $status
+            ]);
+
+            if ($updated) {
+                Log::info("✅ Status updated for message {$messageId} to {$status}");
+            } else {
+                Log::warning("⚠️ Message {$messageId} not found in database for status update");
+            }
+        }
+    }
+
+    // ============================================
+    // Handle other events
+    // ============================================
+    else {
+        Log::info("ℹ️ Unhandled event type: {$event}", [
+            'data' => $data
+        ]);
+    }
+
+    return response()->json(['status' => 'success'], 200);
+}
+/**
+ * Handle media decryption and save to storage
+ */
+private function handleMediaDecryption(array $mediaInfo, string $mediaType, string $messageId): void
+{
+    $url = $mediaInfo['url'] ?? null;
+    $mediaKey = $mediaInfo['mediaKey'] ?? null;
+    
+    if (!$url || !$mediaKey) {
+        throw new \Exception("Media object is missing url or mediaKey.");
+    }
+
+    // Download encrypted media
+    $encryptedData = file_get_contents($url);
+    if ($encryptedData === false) {
+        throw new \Exception("Failed to download media from URL: {$url}");
+    }
+
+    // Derive decryption keys using HKDF
+    $keys = $this->getDecryptionKeys($mediaKey, $mediaType);
+    $iv = substr($keys, 0, 16);
+    $cipherKey = substr($keys, 16, 32);
+    $ciphertext = substr($encryptedData, 0, -10);
+
+    // Decrypt the media
+    $decryptedData = openssl_decrypt($ciphertext, 'aes-256-cbc', $cipherKey, OPENSSL_RAW_DATA, $iv);
+    if ($decryptedData === false) {
+        throw new \Exception('Failed to decrypt media.');
+    }
+
+    // Prepare storage path
+    $mimeType = $mediaInfo['mimetype'] ?? 'application/octet-stream';
+    $extension = explode('/', $mimeType)[1] ?? 'bin';
+    $filename = $mediaInfo['fileName'] ?? "{$messageId}.{$extension}";
+    
+    // Save to storage/app/whatsapp-media/
+    $storagePath = "whatsapp-media/{$filename}";
+    \Storage::put($storagePath, $decryptedData);
+    
+    Log::info("✅ Media decrypted and saved", [
+        'path' => $storagePath,
+        'type' => $mediaType,
+        'size' => strlen($decryptedData)
+    ]);
+}
+
+/**
+ * Derives the decryption keys using HKDF
+ */
+private function getDecryptionKeys(string $mediaKey, string $mediaType): string
+{
+    $info = match ($mediaType) {
+        'image', 'sticker' => 'WhatsApp Image Keys',
+        'video'           => 'WhatsApp Video Keys',
+        'audio'           => 'WhatsApp Audio Keys',
+        'document'        => 'WhatsApp Document Keys',
+        default           => throw new \Exception("Invalid media type: {$mediaType}"),
+    };
+    
+    return hash_hkdf('sha256', base64_decode($mediaKey), 112, $info, '');
 }
 
 
