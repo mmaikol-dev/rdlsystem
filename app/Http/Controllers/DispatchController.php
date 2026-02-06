@@ -54,6 +54,7 @@ class DispatchController extends Controller
                 'code',
                 'store_name',
                 'processed',
+                'confirmed',
             ])
             ->whereIn('status', ['scheduled', 'dispatched','delivered',])
             ->orderByRaw("CASE WHEN delivery_date = ? THEN 0 ELSE 1 END", [$today])
@@ -140,6 +141,7 @@ class DispatchController extends Controller
         'cc_email',
         'merchant',
         'created_at',
+        'confirmed',
     ])
         ->where('agent', $agent)
         ->whereIn('status', ['scheduled', 'dispatched'])
@@ -228,6 +230,7 @@ class DispatchController extends Controller
         'address', 'phone', 'alt_no', 'country', 'city', 
         'product_name', 'quantity', 'status', 'agent', 'cc_email',
         'delivery_date', 'instructions', 'merchant', 'created_at',
+        'confirmed',
     ])
     ->whereIn('order_no', $orderNumbers)
     ->where('agent', $validated['agent_name'])

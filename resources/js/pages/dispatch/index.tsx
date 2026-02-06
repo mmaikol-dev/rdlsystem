@@ -85,6 +85,7 @@ interface SheetOrder {
   instructions?: string;
   agent?: string;
   created_at?: string;
+  confirmed?: number;
 }
 
 interface Agent {
@@ -607,7 +608,13 @@ export default function DispatchView() {
                   </TableHeader>
                   <TableBody>
                     {orders.data.map((order: SheetOrder) => (
-                      <TableRow key={order.id} className="hover:bg-muted/30">
+                      <TableRow
+                        key={order.id}
+                        className={cn(
+                          order.confirmed === 0 ? "bg-red-100 hover:!bg-red-200" : "hover:bg-muted/30"
+                        )}
+                        style={order.confirmed === 0 ? { backgroundColor: '#fee2e2' } : undefined}
+                      >
                         <TableCell
                           className="font-medium w-[120px] truncate"
                           title={order.order_no}

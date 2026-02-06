@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge"
-import { Calendar1Icon, CopyIcon, EyeIcon, FilterIcon, MessageCircleMoreIcon, MoreHorizontal, PlusIcon, RefreshCwIcon, Send, Trash2Icon, MicIcon, MicOffIcon } from "lucide-react";
+import { Calendar1Icon, CopyIcon, EyeIcon, FilterIcon, MessageCircleMoreIcon, MoreHorizontal, PlusIcon, RefreshCwIcon, Send, Trash2Icon, MicIcon, MicOffIcon, Loader2 } from "lucide-react";
 import * as React from 'react';
 import {
   Sheet,
@@ -122,7 +122,7 @@ interface OrderHistory {
 
 // ✅ Optimized TableRow with better memoization
 const TableRowMemo = React.memo(
-  ({ order, highlighted, onEdit, onHistory, onWhatsapp, canDelete, onDelete }: {
+  ({ order, highlighted, onEdit, onHistory, onWhatsapp, canDelete, onDelete, loadingCells }: {
     order: SheetOrder;
     highlighted: Record<string, boolean>;
     onEdit: (order: SheetOrder, field: keyof SheetOrder) => void;
@@ -130,7 +130,14 @@ const TableRowMemo = React.memo(
     onWhatsapp: (orderId: number) => void;
     canDelete: boolean;
     onDelete: (order: SheetOrder) => void;
+    loadingCells: Record<string, boolean>;
   }) => {
+
+    const isCopyLoading = loadingCells[`copy-${order.id}`];
+    const isHistoryLoading = loadingCells[`history-${order.id}`];
+    const isWhatsappLoading = loadingCells[`whatsapp-${order.id}`];
+    const isDeleteLoading = loadingCells[`delete-${order.id}`];
+
     return (
       <TableRow className="hover:bg-muted/10">
         {COLUMNS.map((col) => {
@@ -143,7 +150,7 @@ const TableRowMemo = React.memo(
                 ? order.status
                 : "New Orders"
               : col === "delivery_date" && order.delivery_date
-                ? format(new Date(order.delivery_date), "yyyy-MM-dd") // 👈 show only date
+                ? format(new Date(order.delivery_date), "yyyy-MM-dd")
                 : String(order[col as keyof SheetOrder] || "");
 
           // ✅ Apply green color to all columns if the row has a code value
@@ -170,10 +177,15 @@ const TableRowMemo = React.memo(
         })}
 
         <TableCell className="text-right flex space-x-1 justify-end sticky right-0 bg-background z-10">
+          {/* Copy Row */}
           <Button
             className="p-0 w-5 h-5 flex items-center justify-center"
             variant="ghost"
+            disabled={isCopyLoading}
             onClick={() => {
+              if (isCopyLoading) return;
+              // Trigger loading via onWhatsapp won't work here, so we handle inline
+              // We use a quick local approach: call onWhatsapp pattern won't fit, so we inline copy with a brief flash
               const rowData = COLUMNS.map(col => order[col] ?? "").join("\t");
               navigator.clipboard.writeText(rowData)
                 .then(() => {
@@ -185,33 +197,40 @@ const TableRowMemo = React.memo(
             }}
             title="Copy Row"
           >
-            <CopyIcon className="w-4 h-4" />
+            {isCopyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CopyIcon className="w-4 h-4" />}
           </Button>
+
+          {/* View History */}
           <Button
             className="p-0 w-5 h-5 flex items-center justify-center"
             variant="ghost"
+            disabled={isHistoryLoading}
             onClick={() => onHistory(order.id, order.order_no)}
             title="View History"
           >
-            <EyeIcon className="w-4 h-4" />
+            {isHistoryLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <EyeIcon className="w-4 h-4" />}
           </Button>
 
+          {/* Send WhatsApp */}
           <Button
             className="p-0 w-5 h-5 flex items-center justify-center"
             variant="ghost"
+            disabled={isWhatsappLoading}
             onClick={() => onWhatsapp(order.id)}
             title="Send WhatsApp"
           >
-            <MessageCircleMoreIcon className="w-4 h-4" />
+            {isWhatsappLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircleMoreIcon className="w-4 h-4" />}
           </Button>
 
+          {/* Delete */}
           {canDelete && (
             <Button
               className="p-0 w-5 h-5 flex items-center justify-center"
               variant="ghost"
+              disabled={isDeleteLoading}
               onClick={() => onDelete(order)}
             >
-              <Trash2Icon className="w-4 h-4" />
+              {isDeleteLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2Icon className="w-4 h-4" />}
             </Button>
           )}
         </TableCell>
@@ -227,7 +246,8 @@ const TableRowMemo = React.memo(
       prevOrder.id === nextOrder.id &&
       prevOrder.updated_at === nextOrder.updated_at &&
       JSON.stringify(prevProps.highlighted) === JSON.stringify(nextProps.highlighted) &&
-      prevProps.canDelete === nextProps.canDelete
+      prevProps.canDelete === nextProps.canDelete &&
+      JSON.stringify(prevProps.loadingCells) === JSON.stringify(nextProps.loadingCells)
     );
   }
 );
@@ -236,7 +256,7 @@ const TableRowMemo = React.memo(
 const getCurrentDateTimePrefix = () => {
   const now = new Date();
   const day = now.getDate();
-  const month = now.getMonth() + 1; // Months are 0-indexed
+  const month = now.getMonth() + 1;
   const hours = now.getHours();
   const minutes = now.getMinutes().toString().padStart(2, '0');
   const ampm = hours >= 12 ? 'pm' : 'am';
@@ -275,6 +295,16 @@ export default function Index() {
   const [callTimer, setCallTimer] = React.useState(0);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  // ✅ Centralized loading states
+  // Per-row action loaders keyed as "action-orderId", e.g. "history-42"
+  const [loadingCells, setLoadingCells] = React.useState<Record<string, boolean>>({});
+  // Top-level button loaders
+  const [isFiltering, setIsFiltering] = React.useState(false);
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isCreating, setIsCreating] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+
   // Voice-to-text states
   const [isListening, setIsListening] = React.useState(false);
   const [speechRecognition, setSpeechRecognition] = React.useState<any>(null);
@@ -282,6 +312,16 @@ export default function Index() {
   const [transcript, setTranscript] = React.useState('');
   const [interimTranscript, setInterimTranscript] = React.useState('');
   const [speechError, setSpeechError] = React.useState<string | null>(null);
+
+  // Helper to toggle a single loading cell
+  const setLoadingCell = React.useCallback((key: string, val: boolean) => {
+    setLoadingCells(prev => {
+      if (val) return { ...prev, [key]: true };
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
 
   // Initialize speech recognition
   React.useEffect(() => {
@@ -345,14 +385,10 @@ export default function Index() {
       const currentInstructions = editing.order.instructions || '';
       const dateTimePrefix = getCurrentDateTimePrefix();
 
-      // Only add the date/time prefix if it doesn't already exist at the end
-      // or if the instructions are empty
       if (!currentInstructions.trim() || !currentInstructions.includes(dateTimePrefix.slice(0, -3))) {
-        // If there's existing text, add a new line before the timestamp
         const separator = currentInstructions.trim() ? '\n\n' : '';
         setEditValue(currentInstructions + separator + dateTimePrefix);
       } else {
-        // If timestamp already exists, just set the existing value
         setEditValue(currentInstructions);
       }
     }
@@ -393,7 +429,6 @@ export default function Index() {
 
       if (!response.ok) throw new Error("Failed to initiate call");
 
-      // Wait until AT connects the call (backend callback can update status)
       setTimeout(() => {
         setCallStatus("Connected");
         setCallTimer(0);
@@ -441,6 +476,7 @@ export default function Index() {
   }, []);
 
   const handleHistory = React.useCallback(async (orderId: number, orderNo: string) => {
+    setLoadingCell(`history-${orderId}`, true);
     try {
       const res = await fetch(`/sheetorders/${orderId}/histories`);
       const data = await res.json();
@@ -449,21 +485,26 @@ export default function Index() {
       setHistoryModalOpen(true);
     } catch (error) {
       console.error('Failed to fetch histories', error);
+    } finally {
+      setLoadingCell(`history-${orderId}`, false);
     }
-  }, []);
+  }, [setLoadingCell]);
 
   const handleWhatsapp = React.useCallback((orderId: number) => {
+    setLoadingCell(`whatsapp-${orderId}`, true);
     router.post(`/whatsapp/${orderId}/send`, {}, {
       onSuccess: () => {
         setWhatsappAlert({ type: 'success', message: 'WhatsApp message sent successfully ✅' });
         setTimeout(() => setWhatsappAlert(null), 2000);
+        setLoadingCell(`whatsapp-${orderId}`, false);
       },
       onError: () => {
         setWhatsappAlert({ type: 'error', message: 'Failed to send WhatsApp message ❌' });
         setTimeout(() => setWhatsappAlert(null), 2000);
+        setLoadingCell(`whatsapp-${orderId}`, false);
       },
     });
-  }, []);
+  }, [setLoadingCell]);
 
   const handleDeleteOrder = React.useCallback((order: SheetOrder) => {
     setDeletingOrder(order);
@@ -488,27 +529,19 @@ export default function Index() {
 
   const handleCloseEditModal = React.useCallback(() => {
     if (editing && editValue !== String(editing.order[editing.field] || '')) {
-      // For instructions field, check if user has added text after the dash
       if (editing.field === 'instructions') {
         const dateTimePrefix = getCurrentDateTimePrefix();
-
-        // Check if the editValue contains the date/time prefix
         const prefixIndex = editValue.indexOf(dateTimePrefix);
 
         if (prefixIndex !== -1) {
-          // Get the text after the dash (including the space after dash)
           const textAfterDash = editValue.substring(prefixIndex + dateTimePrefix.length);
-
-          // If there's no text after the dash (or only whitespace), don't save
           if (!textAfterDash.trim()) {
             console.log('No text added after date/time prefix - not saving');
             setEditing(null);
             setEditValue('');
             return;
           }
-        }
-        // If there's no date/time prefix, check if there's any content
-        else if (!editValue.trim()) {
+        } else if (!editValue.trim()) {
           console.log('Instructions field is empty - not saving');
           setEditing(null);
           setEditValue('');
@@ -516,8 +549,8 @@ export default function Index() {
         }
       }
 
-      // Only save if the value has changed
       if (editValue !== String(editing.order[editing.field] || '')) {
+        setIsSaving(true);
         router.put(`/sheetorders/${editing.order.id}`, { [editing.field]: editValue }, {
           preserveState: true,
           preserveScroll: true,
@@ -532,6 +565,10 @@ export default function Index() {
                 return updated;
               });
             }, 2000);
+            setIsSaving(false);
+          },
+          onError: () => {
+            setIsSaving(false);
           },
         });
       }
@@ -545,26 +582,32 @@ export default function Index() {
   }, []);
 
   const handleCreateOrder = React.useCallback(() => {
+    setIsCreating(true);
     router.post('/sheetorders', newOrder, {
       onSuccess: () => {
         setCreateModalOpen(false);
         setNewOrder({});
+        setIsCreating(false);
       },
       onError: (err) => {
         console.error("Create failed", err);
+        setIsCreating(false);
       }
     });
   }, [newOrder]);
 
   const handleDelete = React.useCallback(() => {
     if (!deletingOrder) return;
+    setIsDeleting(true);
 
     router.delete(`/sheetorders/${deletingOrder.id}`, {
       onSuccess: () => {
         setDeletingOrder(null);
+        setIsDeleting(false);
       },
       onError: (err) => {
         console.error("Delete failed", err);
+        setIsDeleting(false);
       }
     });
   }, [deletingOrder]);
@@ -577,24 +620,37 @@ export default function Index() {
   }, []);
 
   const applyFilters = React.useCallback(() => {
+    setIsFiltering(true);
     router.get('/sheetorders', {
       ...filters,
       status: Array.isArray(filters.status) ? (filters.status as string[]).join(',') : filters.status,
       from_date: dateRange?.from ? formatDate(dateRange.from) : undefined,
       to_date: dateRange?.to ? formatDate(dateRange.to) : undefined,
-    }, { preserveState: true });
-
-    setFilterDialogOpen(false);
+    }, {
+      preserveState: true,
+      onFinish: () => {
+        setIsFiltering(false);
+        setFilterDialogOpen(false);
+      },
+    });
   }, [filters, dateRange, formatDate]);
 
   const clearFilters = React.useCallback(() => {
+    setIsFiltering(true);
     setFilters({});
     setDateRange(undefined);
-    router.get('/sheetorders', {}, { preserveState: true });
+    router.get('/sheetorders', {}, {
+      preserveState: true,
+      onFinish: () => setIsFiltering(false),
+    });
   }, []);
 
   const refreshOrders = React.useCallback(() => {
-    router.get('/sheetorders', {}, { preserveState: true });
+    setIsRefreshing(true);
+    router.get('/sheetorders', {}, {
+      preserveState: true,
+      onFinish: () => setIsRefreshing(false),
+    });
   }, []);
 
   // ✅ Memoize merchant data arrays to prevent recreation
@@ -626,9 +682,10 @@ export default function Index() {
           {/* Filter Orders */}
           <Button
             className="h-8 w-8 p-0 text-sm"
+            disabled={isFiltering}
             onClick={() => setFilterDialogOpen(true)}
           >
-            <FilterIcon className="h-4 w-4" />
+            {isFiltering ? <Loader2 className="h-4 w-4 animate-spin" /> : <FilterIcon className="h-4 w-4" />}
           </Button>
 
           <Sheet>
@@ -672,6 +729,7 @@ export default function Index() {
                       <Button
                         key={num}
                         className="h-12 p-0 text-sm"
+                        disabled={callStatus === "Calling" || callStatus === "Connected"}
                         onClick={() => setDialNumber(dialNumber + num)}
                       >
                         {num}
@@ -693,6 +751,7 @@ export default function Index() {
                         className="bg-yellow-500 hover:bg-yellow-600 px-6 text-white"
                         disabled
                       >
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         Calling...
                       </Button>
                     )}
@@ -735,9 +794,10 @@ export default function Index() {
           {/* Refresh Button */}
           <Button
             className="h-8 w-8 p-0 text-sm"
+            disabled={isRefreshing}
             onClick={refreshOrders}
           >
-            <RefreshCwIcon className="h-4 w-4" />
+            {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCwIcon className="h-4 w-4" />}
           </Button>
 
           {/* Create Order Button */}
@@ -783,6 +843,7 @@ export default function Index() {
                       onWhatsapp={handleWhatsapp}
                       canDelete={userPermissions.canDelete}
                       onDelete={handleDeleteOrder}
+                      loadingCells={loadingCells}
                     />
                   ))}
                 </TableBody>
@@ -1008,8 +1069,12 @@ export default function Index() {
               ))}
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={clearFilters}>Clear</Button>
-              <Button onClick={applyFilters}>Apply</Button>
+              <Button variant="outline" disabled={isFiltering} onClick={clearFilters}>
+                {isFiltering ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Clearing...</> : 'Clear'}
+              </Button>
+              <Button disabled={isFiltering} onClick={applyFilters}>
+                {isFiltering ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Applying...</> : 'Apply'}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -1048,6 +1113,7 @@ export default function Index() {
                       rows={5}
                       placeholder="Enter instructions..."
                       className="pr-12"
+                      disabled={isSaving}
                     />
                     {isSpeechSupported && (
                       <div className="absolute right-2 top-2">
@@ -1058,6 +1124,7 @@ export default function Index() {
                           onClick={toggleListening}
                           title={isListening ? "Stop recording" : "Start voice recording"}
                           type="button"
+                          disabled={isSaving}
                         >
                           {isListening ? (
                             <MicOffIcon className="h-4 w-4" />
@@ -1087,6 +1154,8 @@ export default function Index() {
                   <div className="text-xs text-gray-500 italic">
                     💡 Date/time is auto-added. Type your comment after the dash. If you don't add text after the dash, changes won't be saved.
                   </div>
+                  {/* Save button shown for instructions so user gets explicit feedback */}
+
                 </>
               ) : editing.field === 'delivery_date' ? (
                 <Popover>
@@ -1094,6 +1163,7 @@ export default function Index() {
                     <Button
                       variant="outline"
                       className="w-full justify-start text-left font-normal"
+                      disabled={isSaving}
                     >
                       <Calendar1Icon className="mr-2 h-4 w-4" />
                       {editValue
@@ -1116,9 +1186,12 @@ export default function Index() {
                 <Input
                   value={editValue}
                   onChange={e => setEditValue(e.target.value)}
+                  disabled={isSaving}
                 />
               )}
             </div>
+
+
           </DialogContent>
         </Dialog>
       )}
@@ -1155,7 +1228,7 @@ export default function Index() {
 
       {/* ✅ Delete Confirmation */}
       {deletingOrder && (
-        <Dialog open={!!deletingOrder} onOpenChange={() => setDeletingOrder(null)}>
+        <Dialog open={!!deletingOrder} onOpenChange={() => { if (!isDeleting) setDeletingOrder(null); }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Confirm Delete</DialogTitle>
@@ -1165,15 +1238,17 @@ export default function Index() {
             </DialogHeader>
             <p>Are you sure you want to delete order <strong>#{deletingOrder.order_no}</strong>?</p>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setDeletingOrder(null)}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+              <Button variant="outline" disabled={isDeleting} onClick={() => setDeletingOrder(null)}>Cancel</Button>
+              <Button variant="destructive" disabled={isDeleting} onClick={handleDelete}>
+                {isDeleting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Deleting...</> : 'Delete'}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
       )}
 
       {/* Create Order Modal */}
-      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+      <Dialog open={createModalOpen} onOpenChange={(open) => { if (!isCreating) setCreateModalOpen(open); }}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Create New Order</DialogTitle>
@@ -1190,6 +1265,7 @@ export default function Index() {
               placeholder="Order No"
               value={newOrder.order_no || ""}
               onChange={(e) => handleNewOrderChange("order_no", e.target.value)}
+              disabled={isCreating}
             />
 
             <Popover>
@@ -1197,6 +1273,7 @@ export default function Index() {
                 <Button
                   variant="outline"
                   className="w-full justify-start text-left font-normal"
+                  disabled={isCreating}
                 >
                   <Calendar1Icon className="mr-2 h-4 w-4" />
                   {newOrder.order_date
@@ -1221,6 +1298,7 @@ export default function Index() {
               placeholder="Amount"
               value={newOrder.amount || ""}
               onChange={(e) => handleNewOrderChange("amount", e.target.value)}
+              disabled={isCreating}
             />
 
             <Input
@@ -1229,6 +1307,7 @@ export default function Index() {
               placeholder="Quantity"
               value={newOrder.quantity || ""}
               onChange={(e) => handleNewOrderChange("quantity", e.target.value)}
+              disabled={isCreating}
             />
 
             {/* --- Client Info --- */}
@@ -1237,21 +1316,25 @@ export default function Index() {
               placeholder="Client Name"
               value={newOrder.client_name || ""}
               onChange={(e) => handleNewOrderChange("client_name", e.target.value)}
+              disabled={isCreating}
             />
             <Input
               placeholder="Client City"
               value={newOrder.city || ""}
               onChange={(e) => handleNewOrderChange("city", e.target.value)}
+              disabled={isCreating}
             />
             <Input
               placeholder="Phone"
               value={newOrder.phone || ""}
               onChange={(e) => handleNewOrderChange("phone", e.target.value)}
+              disabled={isCreating}
             />
             <Input
               placeholder="Address"
               value={newOrder.address || ""}
               onChange={(e) => handleNewOrderChange("address", e.target.value)}
+              disabled={isCreating}
             />
 
             {/* --- Product Info --- */}
@@ -1259,21 +1342,23 @@ export default function Index() {
               placeholder="Product Name"
               value={newOrder.product_name || ""}
               onChange={(e) => handleNewOrderChange("product_name", e.target.value)}
+              disabled={isCreating}
             />
 
             <Input
               placeholder="Store Name"
               value={newOrder.store_name || ""}
               onChange={(e) => handleNewOrderChange("store_name", e.target.value)}
+              disabled={isCreating}
             />
 
             {/* --- Merchant Select --- */}
             <Select
               value={newOrder.merchant || ""}
+              disabled={isCreating}
               onValueChange={(val) => {
                 handleNewOrderChange("merchant", val);
 
-                // auto fill sheet_id and reset sheet_name
                 if (merchantData[val]) {
                   handleNewOrderChange("sheet_id", merchantData[val].sheet_id || "");
                   handleNewOrderChange("sheet_name", "");
@@ -1303,7 +1388,7 @@ export default function Index() {
             <Select
               value={newOrder.sheet_name || ""}
               onValueChange={(val) => handleNewOrderChange("sheet_name", val)}
-              disabled={!newOrder.merchant}
+              disabled={!newOrder.merchant || isCreating}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select Sheet Name" />
@@ -1324,6 +1409,7 @@ export default function Index() {
                 <Button
                   variant="outline"
                   className="w-full justify-start text-left font-normal"
+                  disabled={isCreating}
                 >
                   <Calendar1Icon className="mr-2 h-4 w-4" />
                   {newOrder.delivery_date
@@ -1347,6 +1433,7 @@ export default function Index() {
               required
               value={newOrder.status || ""}
               onValueChange={(val) => handleNewOrderChange("status", val)}
+              disabled={isCreating}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select status" />
@@ -1368,6 +1455,7 @@ export default function Index() {
                 onChange={(e) => handleNewOrderChange("instructions", e.target.value)}
                 rows={4}
                 className="pr-12"
+                disabled={isCreating}
               />
               {isSpeechSupported && (
                 <div className="absolute right-2 top-2">
@@ -1378,6 +1466,7 @@ export default function Index() {
                     onClick={toggleListening}
                     title={isListening ? "Stop recording" : "Start voice recording"}
                     type="button"
+                    disabled={isCreating}
                   >
                     {isListening ? (
                       <MicOffIcon className="h-4 w-4" />
@@ -1407,8 +1496,10 @@ export default function Index() {
           </div>
 
           <div className="flex justify-end gap-2 mt-4">
-            <Button variant="outline" onClick={() => setCreateModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateOrder}>Create</Button>
+            <Button variant="outline" disabled={isCreating} onClick={() => setCreateModalOpen(false)}>Cancel</Button>
+            <Button disabled={isCreating} onClick={handleCreateOrder}>
+              {isCreating ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : 'Create'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

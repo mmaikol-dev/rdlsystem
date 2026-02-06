@@ -431,6 +431,173 @@ private function getDecryptionKeys(string $mediaKey, string $mediaType): string
 }
 
 
+public function sendMessage($id)
+{
+    Log::info("📤 Sending WhatsApp template for Order ID: $id via WasenderAPI");
+
+    try {
+        $order = SheetOrder::findOrFail($id);
+
+        $client_name = $order->client_name ?? 'Client';
+        $store_name = strtoupper($order->store_name ?? 'STORE');
+        $order_no = $order->order_no;
+        $product_name = $order->product_name;
+        $quantity = $order->quantity;
+        $amount = $order->amount;
+        $cc_email = $order->cc_email ?? null;
+        
+        Log::info("🔍 Order details", [
+            'client_name' => $client_name,
+            'store_name' => $store_name,
+            'order_no' => $order_no,
+            'product_name' => $product_name,
+            'quantity' => $quantity,
+            'amount' => $amount,
+            'cc_email' => $cc_email
+        ]);
+
+        // Get phone number
+        $phone = $this->getPhoneNumberForWasenderAPI($order->phone, $order->alt_no, $store_name);
+        
+        if (!$phone) {
+            Log::error("❌ Invalid phone numbers", [
+                'phone' => $order->phone,
+                'alt_no' => $order->alt_no
+            ]);
+            return back()->with('error', 'Invalid phone number format ❌');
+        }
+
+        Log::info("📞 Phone formatted for WasenderAPI: {$phone}");
+
+        // Create custom message based on store
+        $message = $this->createOrderMessage($client_name, $order_no, $product_name, $quantity, $amount, $store_name);
+        
+        Log::info("📝 Message content:", ['message' => $message]);
+
+        // Initialize WasenderAPI client
+        $apiKey = '800bd2a1e9ec63c98996e734f9cad6f5f2713f49295dd3c4589313df10758a9c';
+        $client = new \WasenderApi\WasenderClient($apiKey);
+
+        // Send message via WasenderAPI
+        $response = $client->sendText($phone, $message);
+
+        Log::info("✅ WasenderAPI Response:", $response);
+
+        // Extract message ID from response
+        $messageId = $response['data']['key']['id'] ?? null;
+
+        // Save to database
+        $whatsappData = [
+            'to' => $phone,
+            'client_name' => $client_name,
+            'store_name' => $store_name,
+            'cc_agents' => $cc_email,
+            'message' => $message,
+            'status' => 'sent',
+            'sid' => $messageId,
+        ];
+
+        Log::info("💾 Saving WhatsApp data:", $whatsappData);
+
+        $whatsapp = Whatsapp::create($whatsappData);
+
+        Log::info("✅ Saved WhatsApp record:", $whatsapp->toArray());
+
+        return back()->with('success', 'WhatsApp message sent successfully ✅');
+
+    } catch (\WasenderApi\Exceptions\WasenderApiException $e) {
+        Log::error("❌ WasenderAPI Error", [
+            'error' => $e->getMessage(),
+            'order_id' => $id
+        ]);
+
+        return back()->with('error', 'Failed to send WhatsApp message: ' . $e->getMessage() . ' ❌');
+
+    } catch (\Exception $e) {
+        Log::error("❌ WhatsApp sending failed", [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return back()->with('error', 'Failed to send WhatsApp message ❌');
+    }
+}
+
+/**
+ * Format phone number for WasenderAPI
+ */
+private function getPhoneNumberForWasenderAPI($primaryPhone, $altPhone, $storeName)
+{
+    // Try primary phone first
+    $phone = $this->formatPhoneForWasender($primaryPhone);
+    
+    if (!$phone) {
+        // Try alt phone
+        $phone = $this->formatPhoneForWasender($altPhone);
+    }
+    
+    return $phone;
+}
+
+/**
+ * Format single phone number for WasenderAPI
+ */
+private function formatPhoneForWasender($phoneNumber)
+{
+    if (!$phoneNumber) return null;
+
+    // Remove anything not a digit
+    $phone = preg_replace('/\D/', '', $phoneNumber);
+    
+    if (!$phone || strlen($phone) < 9) {
+        return null;
+    }
+
+    // Ensure proper country code format (no + for WasenderAPI)
+    if (!preg_match('/^(254|255)/', $phone)) {
+        if (substr($phone, 0, 1) === '0') {
+            $phone = '254' . substr($phone, 1);
+        } else {
+            $phone = '254' . $phone;
+        }
+    }
+
+    // Final validation
+    if (strlen($phone) >= 12 && strlen($phone) <= 13) {
+        return $phone;
+    }
+    
+    return null;
+}
+
+/**
+ * Create custom order message template
+ */
+private function createOrderMessage($clientName, $orderNo, $productName, $quantity, $amount, $storeName)
+{
+    $currency = strtoupper($storeName) === 'RDL3' ? 'TZS' : 'KES';
+    $formattedAmount = number_format($amount);
+    $contactNumber = '0740801187';
+    
+    return <<<MESSAGE
+*REALDEAL LOGISTICS - ORDER NOTIFICATION*
+
+Hello {$clientName},
+
+We tried contacting you regarding your order *{$orderNo}* but your phone was unreachable.
+
+*Order Details:*
+📦 Product: {$productName}
+🔢 Quantity: {$quantity} pcs
+💰 Amount: {$currency} {$formattedAmount}
+
+*Please call us back on {$contactNumber}* to confirm your availability for delivery.
+
+Thank you for choosing Realdeal Logistics!
+
+_Delivering Excellence, Every Time._
+MESSAGE;
+}
     /**
      * Store a newly created resource in storage.
      */
