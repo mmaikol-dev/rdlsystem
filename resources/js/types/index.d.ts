@@ -35,6 +35,7 @@ export interface User {
     id: number;
     name: string;
     email: string;
+    status?: 'available' | 'busy' | 'away' | 'offline' | 'on_call';
     avatar?: string;
     email_verified_at: string | null;
     created_at: string;

@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Models\CallLog;
 use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Support\Str;
 
@@ -24,6 +26,7 @@ class User extends Authenticatable implements MustVerifyEmail
         "store_address",
         "store_phone",
         'roles', 
+        'status',
         "store_email",
         "email_verified_at",
     ];
@@ -34,9 +37,9 @@ class User extends Authenticatable implements MustVerifyEmail
     ];
 
     protected $casts = [
-        
+        'email_verified_at' => 'datetime',
         'created_at' => 'datetime',
-        'updated_at' => 'datetime'
+        'updated_at' => 'datetime',
     ];
 
     public function scopeSearch($query, $value): void
@@ -61,4 +64,8 @@ protected static function boot()
         });
     }
 
+    public function callLogs(): HasMany
+    {
+        return $this->hasMany(CallLog::class, 'agent_user_id');
+    }
 }

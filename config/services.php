@@ -19,9 +19,9 @@ return [
     ],
 
     'africastalking' => [
-    'username' => env('AFRICASTALKING_USERNAME','voiceapp1'),
-    'key' => env('AFRICASTALKING_API_KEY','atsk_52e1c57e7e85f6b72a3feadc75348f990a77b11faaba39ef8acc119f44f9cb41ee9d494f'),
-],
+        'username' => env('AFRICASTALKING_USERNAME'),
+        'key' => env('AFRICASTALKING_API_KEY'),
+    ],
 
 
     'ses' => [
