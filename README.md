@@ -521,6 +521,3 @@ Core frontend files:
 - [resources/js/pages/Voice/index.tsx](/home/atlas/callcentersys/resources/js/pages/Voice/index.tsx)
 - [resources/js/pages/Voice/logs.tsx](/home/atlas/callcentersys/resources/js/pages/Voice/logs.tsx)
 
-## License
-
-This project is currently documented as an internal application. Add the licensing terms you want to enforce before distributing it externally.
